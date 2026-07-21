@@ -720,7 +720,9 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 - Enable: Set environment variable `RUN_MODE=simple`
 - Difference: Hides SaaS-related features and skips billing process
-- Security note: In production, you must also set `SIMPLE_MODE_CONFIRM=true` to allow startup
+- `RUN_MODE=simple` is the complete runtime switch in this version. The previously documented
+  `SIMPLE_MODE_CONFIRM` variable is not read by the application and has been removed to avoid a
+  false sense of protection; enforce deployment approval outside the container.
 
 ---
 

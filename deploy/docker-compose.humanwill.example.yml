@@ -1,0 +1,65 @@
+# HumanWill application-only reference.  This file intentionally contains no
+# credentials, production hostnames, database names, Redis passwords, or keys.
+# Create the PostgreSQL role/database and Redis logical DB out of band after a
+# separately authorized backup.  Pin IMAGE to the digest printed by the
+# immutable release workflow before use.
+services:
+  sub2api:
+    image: ghcr.io/hubyuan/sub2api@sha256:REPLACE_WITH_RELEASE_DIGEST
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - "127.0.0.1:8080:8080"
+    cpus: 2.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 512
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    environment:
+      RUN_MODE: simple
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      DATA_DIR: /app/data
+      DATABASE_HOST: ${SUB2API_DATABASE_HOST:?set outside this file}
+      DATABASE_PORT: ${SUB2API_DATABASE_PORT:-5432}
+      DATABASE_USER: ${SUB2API_DATABASE_USER:?set outside this file}
+      DATABASE_PASSWORD: ${SUB2API_DATABASE_PASSWORD:?set outside this file}
+      DATABASE_DBNAME: ${SUB2API_DATABASE_DBNAME:?set to a dedicated database}
+      DATABASE_SSLMODE: ${SUB2API_DATABASE_SSLMODE:-require}
+      REDIS_HOST: ${SUB2API_REDIS_HOST:?set outside this file}
+      REDIS_PORT: ${SUB2API_REDIS_PORT:-6379}
+      REDIS_USERNAME: ${SUB2API_REDIS_USERNAME:-}
+      REDIS_PASSWORD: ${SUB2API_REDIS_PASSWORD:?set outside this file}
+      REDIS_DB: ${SUB2API_REDIS_DB:?set to a non-default logical DB}
+      JWT_SECRET: ${SUB2API_JWT_SECRET:?set outside this file}
+    volumes:
+      - sub2api-data:/app/data
+    networks:
+      - shared-app-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+          pids: 512
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+
+volumes:
+  sub2api-data:
+
+networks:
+  shared-app-net:
+    external: true
