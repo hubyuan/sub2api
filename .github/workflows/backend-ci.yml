@@ -8,6 +8,120 @@ permissions:
   contents: read
 
 jobs:
+  release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check immutable release and application-only Compose
+        run: |
+          python3 tools/check_humanwill_release.py
+          docker compose -f deploy/docker-compose.humanwill.example.yml config --no-interpolate >/dev/null
+
+  low-resource-runtime:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: audit-only-admin-password
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create isolated database role/database and Redis sentinel
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE sub2api_audit LOGIN PASSWORD 'audit-only-app-password'" >/dev/null
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE sub2api_audit OWNER sub2api_audit" >/dev/null
+          docker exec "$REDIS_CONTAINER" redis-cli -n 0 SET humanwill:audit:sentinel untouched >/dev/null
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build linux/amd64 audit image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: sub2api-humanwill-audit:ci
+          build-args: |
+            VERSION=0.0.0-audit
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=humanwill-runtime-audit
+          cache-to: type=gha,mode=max,scope=humanwill-runtime-audit
+      - name: Verify simple mode under candidate limits
+        id: runtime
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
+        run: |
+          set -euo pipefail
+          cleanup() { docker rm -f sub2api-humanwill-audit >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --name sub2api-humanwill-audit --network host \
+            --cpus 0.5 --memory 512m --memory-swap 512m --pids-limit 128 \
+            --ulimit nofile=16384:16384 \
+            -e RUN_MODE=simple -e AUTO_SETUP=true -e DATA_DIR=/app/data \
+            -e SERVER_HOST=127.0.0.1 -e SERVER_PORT=18080 \
+            -e DATABASE_HOST=127.0.0.1 -e DATABASE_PORT=55432 \
+            -e DATABASE_USER=sub2api_audit -e DATABASE_PASSWORD=audit-only-app-password \
+            -e DATABASE_DBNAME=sub2api_audit -e DATABASE_SSLMODE=disable \
+            -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=56379 -e REDIS_DB=9 \
+            -e ADMIN_EMAIL=audit@example.invalid -e ADMIN_PASSWORD=audit-only-admin-password \
+            -e JWT_SECRET=audit-only-jwt-secret-at-least-32-characters \
+            sub2api-humanwill-audit:ci >/dev/null
+
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:18080/health >/dev/null; then break; fi
+            if [ "$attempt" -eq 60 ]; then docker logs --tail=100 sub2api-humanwill-audit; exit 1; fi
+            sleep 1
+          done
+
+          startup_stats="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-audit)"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' http://127.0.0.1:18080/v1/models)" = 401
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/v1/responses)" = 401
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","messages":[]}' http://127.0.0.1:18080/v1/chat/completions)" = 401
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/openai/v1/responses)" = 401
+          management_stats="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-audit)"
+
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tAc \
+            "SELECT to_regclass('public.schema_migrations') IS NULL" | grep -qx t
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_audit -tAc \
+            "SELECT COUNT(*) FROM schema_migrations" | grep -Eq '^[1-9][0-9]*$'
+          test "$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 GET humanwill:audit:sentinel | tr -d '\r')" = untouched
+
+          docker stop --time 10 sub2api-humanwill-audit >/dev/null
+          test "$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-audit)" = 0
+          {
+            echo '### Low-resource runtime audit'
+            echo
+            echo '- PostgreSQL 16: dedicated role/database migration passed'
+            echo '- Redis 7: DB 0 sentinel survived while application selected DB 9'
+            echo '- Candidate limit: 0.5 CPU, 512 MiB memory/swap, 128 PIDs, NOFILE 16384'
+            echo "- Post-start sample (CPU | memory | PIDs): ${startup_stats}"
+            echo "- Compatibility-request sample (CPU | memory | PIDs): ${management_stats}"
+            echo '- SIGTERM graceful exit: passed within 10 seconds'
+            echo '- Streaming peak with authenticated local mock upstream: deferred (no upstream/account fixture in this audit)'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   shell:
     runs-on: macos-15
     steps:
