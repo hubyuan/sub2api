@@ -96,20 +96,29 @@ jobs:
           done
 
           startup_stats="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-audit)"
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' http://127.0.0.1:18080/v1/models)" = 401
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/v1/responses)" = 401
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","messages":[]}' http://127.0.0.1:18080/v1/chat/completions)" = 401
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/openai/v1/responses)" = 401
+          models_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' http://127.0.0.1:18080/v1/models)"
+          responses_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/v1/responses)"
+          chat_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","messages":[]}' http://127.0.0.1:18080/v1/chat/completions)"
+          codex_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/openai/v1/responses)"
+          echo "Compatibility status: models=${models_status}, responses=${responses_status}, chat=${chat_status}, codex=${codex_status}"
+          test "$models_status" = 401
+          test "$responses_status" = 401
+          test "$chat_status" = 401
+          test "$codex_status" = 401
           management_stats="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-audit)"
 
-          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tAc \
-            "SELECT to_regclass('public.schema_migrations') IS NULL" | grep -qx t
-          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_audit -tAc \
-            "SELECT COUNT(*) FROM schema_migrations" | grep -Eq '^[1-9][0-9]*$'
-          test "$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 GET humanwill:audit:sentinel | tr -d '\r')" = untouched
+          maintenance_schema_absent="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tAc "SELECT to_regclass('public.schema_migrations') IS NULL" | tr -d '\r')"
+          migration_count="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_audit -tAc "SELECT COUNT(*) FROM schema_migrations" | tr -d '\r')"
+          redis_sentinel="$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 GET humanwill:audit:sentinel | tr -d '\r')"
+          echo "Isolation status: maintenance_schema_absent=${maintenance_schema_absent}, migration_count=${migration_count}, redis_db0_sentinel=${redis_sentinel}"
+          test "$maintenance_schema_absent" = t
+          test "$migration_count" -gt 0
+          test "$redis_sentinel" = untouched
 
           docker stop --time 10 sub2api-humanwill-audit >/dev/null
-          test "$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-audit)" = 0
+          exit_code="$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-audit)"
+          echo "Graceful exit code: ${exit_code}"
+          test "$exit_code" = 0
           {
             echo '### Low-resource runtime audit'
             echo
