@@ -6,7 +6,7 @@ Audit baseline: `b8b72e1b18310c908668e79112e43c1e7c682696` on 2026-07-21. This d
 
 The production candidate is one `linux/amd64` application container in `RUN_MODE=simple`, attached to an existing private application network. PostgreSQL and Redis instances may be reused only after a separate production authorization creates a dedicated PostgreSQL role and database and reserves a non-default Redis logical DB. The application is bound to `127.0.0.1`; no public route is part of initialization.
 
-The application-only reference is `deploy/docker-compose.humanwill.example.yml`. Its 0.5 CPU, 512 MiB memory/swap, 128 PID and 16384 NOFILE values are candidates, not measured guarantees.
+The application-only reference is `deploy/docker-compose.humanwill.example.yml`. Its production-candidate ceilings are 2 vCPU, 2 GiB memory, 2 GiB memory-swap, 512 PIDs and 65536 NOFILE. These are enforced limits, not reservations or measured usage guarantees. The smaller 0.5 vCPU, 512 MiB memory/swap, 128 PIDs and 16384 NOFILE profile exists only as a CI minimum smoke test and is not a production default.
 
 ## Code facts
 
@@ -24,7 +24,7 @@ The application-only reference is `deploy/docker-compose.humanwill.example.yml`.
 
 | Workflow | Triggers | Jobs and effects | Secrets named |
 | --- | --- | --- | --- |
-| `backend-ci.yml` | every push and PR | macOS deploy script checks; Go unit/integration; frontend lint/typecheck/critical Vitest; golangci-lint | none |
+| `backend-ci.yml` | every push and PR | release/Compose contracts; disposable PostgreSQL/Redis minimum and production-candidate runtime audits with loopback mock streaming; macOS deploy script checks; Go unit/integration; frontend lint/typecheck/critical Vitest; golangci-lint | none |
 | `security-scan.yml` | every push/PR; Monday 03:00 UTC | `govulncheck`; production dependency audit with exception check | none |
 | `cla.yml` | issue comments and `pull_request_target` events | writes CLA/status/PR state only when repository is `Wei-Shaw/sub2api` | `GITHUB_TOKEN` |
 | `release.yml` | `v*` pushes and manual dispatch | upstream VERSION/frontend artifacts, Docker Hub/GHCR multi/single-arch GoReleaser artifacts, GitHub Release, Docker Hub description, Telegram notification and default-branch VERSION commit | `GITHUB_TOKEN`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
@@ -34,7 +34,7 @@ Every job in upstream `release.yml` is repository-gated to `Wei-Shaw/sub2api`, i
 
 ## Immutable release and rollback review
 
-Before dispatch, verify CI on the merged commit and supply its complete 40-character SHA plus a new immutable SemVer without a leading `v`. The workflow checks out and verifies that exact commit, rejects an existing registry version, builds only `linux/amd64`, and records OCI `source`, `revision`, and `version`. Copy the resulting full `image@sha256:...` from the workflow summary; production must deploy by digest.
+Before dispatch, verify CI on the merged commit and supply its complete 40-character SHA plus a new immutable SemVer without a leading `v`. The workflow checks out and verifies that exact commit, explicitly fetches the fork's `origin/main`, rejects a SHA that is not an ancestor of that ref, rejects an existing registry version, builds only `linux/amd64`, and records OCI `source`, `revision`, and `version`. The release contract exercises both cases: a main commit is accepted by the ancestry predicate and an unmerged commit is rejected. Copy the resulting full `image@sha256:...` from the workflow summary; production must deploy by digest.
 
 Before production, review migrations between the currently deployed and proposed commits and take a restorable PostgreSQL backup plus `/app/data` backup. Image rollback is compatible only when the old binary supports the migrated schema. When it does not, restore the database and `/app/data` together during a separately authorized maintenance operation. Redis keys may be discarded only within the dedicated logical DB and only with explicit production authorization.
 
@@ -50,14 +50,10 @@ NewAPI should use its existing OpenAI-compatible/Codex-capable channel support w
 
 Static checks completed locally: workflow/Compose inspection, `docker compose ... config --no-interpolate`, release-contract validation, shell syntax, repository search for simple-mode and Redis destructive commands, and relevant Go tests. The Apple-container test is macOS-specific and remains covered by its existing macOS CI job. PR checks are authoritative for the complete upstream CI matrix.
 
-The local development host exposed a Docker CLI but denied access to the daemon, so no local container was started and no figures were invented. `backend-ci.yml` therefore includes an isolated `low-resource-runtime` job using disposable PostgreSQL 16 and Redis 7 service containers, a dedicated non-superuser role/database and Redis DB 9. It builds the exact PR source for `linux/amd64`, starts it with the candidate limits, verifies migration/health/compatibility authentication paths/DB 0 sentinel preservation and graceful SIGTERM, and records samples in the workflow summary. CI completion is the evidence gate. An authenticated streaming peak with a local mock upstream remains deferred because this initialization has no account fixture or real upstream credential.
+The local development host exposed a Docker CLI but denied access to the daemon, so no local container was started and no figures were invented. `backend-ci.yml` therefore contains the authoritative isolated `low-resource-runtime` audit. It uses disposable PostgreSQL 16 and Redis 7 service containers, creates a dedicated non-superuser role/database, reserves Redis DB 9, and builds the exact PR source for `linux/amd64`.
 
-On an authorized isolated development runner, complete the remaining streaming measurement and recheck:
+The job first runs the application at the production-candidate limits and verifies Docker's effective NanoCPUs, memory, memory-swap, PID and NOFILE values. Through normal application APIs it logs in as the disposable admin, discovers the simple-mode OpenAI group, creates an OpenAI API-key account pointed only at a Python server bound to runner loopback, and creates an application API key. That key must receive valid SSE terminal events from both authenticated `/v1/responses` and `/backend-api/codex/responses`; `/openai/v1/responses` remains intentionally unused because it is not registered.
 
-1. First-start migration completes under the candidate limits and creates migration records only in the dedicated database.
-2. DB 0's sentinel survives setup, authenticated management operations and a safe simulated streaming `/v1/responses` request; Sub2API keys occur only in DB 9.
-3. `/health` is 200; invalid test authentication reaches `/v1/models`, `/v1/responses`, `/v1/chat/completions` and `/backend-api/codex/responses` without upstream traffic; a local mock upstream produces valid streaming events.
-4. Record peak CPU, memory and PIDs during migration, five-minute idle, a management operation and the mock stream. Accept 0.5 CPU/512 MiB/128 PIDs only if there is at least 20% headroom and no OOM, throttling-induced health failure or restart. Otherwise raise only the observed constrained limit and attach the samples to the release handoff.
-5. Send SIGTERM during idle and during a mock stream; confirm exit within the orchestrator grace period and document whether the client stream drains within the application's five-second HTTP shutdown window.
+The audit retains samples and reports CPU, memory and PID peaks for migration/startup, five minutes of idle, management operations, authenticated streaming and stream-active shutdown. It also asserts that the DB 0 sentinel is the only DB 0 key, DB 9 contains application keys, every other checked logical DB is empty, and migrations exist only in the dedicated PostgreSQL database. Idle SIGTERM and stream-active SIGTERM must both produce exit code 0 within Docker's grace period; the summary records whether the slow client stream completed or was interrupted by the application's five-second HTTP shutdown window. Finally, the already-initialized application is restarted under 0.5 vCPU, 512 MiB memory/swap, 128 PIDs and 16384 NOFILE solely as a minimum smoke test. The latest-head CI summary and logs are the measurement evidence gate.
 
 Do not dispatch `humanwill-release.yml`, merge, package or deploy until the initialization PR is approved and the user gives the separate `发布 PR #X` instruction.

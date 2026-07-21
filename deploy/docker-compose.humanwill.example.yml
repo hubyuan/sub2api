@@ -12,14 +12,14 @@ services:
       - /tmp:rw,noexec,nosuid,size=64m
     ports:
       - "127.0.0.1:8080:8080"
-    cpus: 0.50
-    mem_limit: 512m
-    memswap_limit: 512m
-    pids_limit: 128
+    cpus: 2.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 512
     ulimits:
       nofile:
-        soft: 16384
-        hard: 16384
+        soft: 65536
+        hard: 65536
     environment:
       RUN_MODE: simple
       SERVER_HOST: 0.0.0.0
@@ -50,9 +50,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.50"
-          memory: 512M
-          pids: 128
+          cpus: "2.0"
+          memory: 2G
+          pids: 512
         reservations:
           cpus: "0.10"
           memory: 128M

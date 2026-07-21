@@ -14,6 +14,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Check immutable release and application-only Compose
         run: |
+          python3 -m py_compile tools/check_humanwill_release.py tools/mock_openai_upstream.py tools/container_resource_sampler.py
           python3 tools/check_humanwill_release.py
           docker compose -f deploy/docker-compose.humanwill.example.yml config --no-interpolate >/dev/null
 
@@ -67,18 +68,67 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=humanwill-runtime-audit
           cache-to: type=gha,mode=max,scope=humanwill-runtime-audit
-      - name: Verify simple mode under candidate limits
+      - name: Audit isolated simple-mode lifecycle and minimum smoke profile
         id: runtime
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           REDIS_CONTAINER: ${{ job.services.redis.id }}
         run: |
           set -euo pipefail
-          cleanup() { docker rm -f sub2api-humanwill-audit >/dev/null 2>&1 || true; }
+          audit_dir="$RUNNER_TEMP/sub2api-runtime-audit"
+          mkdir -p "$audit_dir"
+          mock_state="$audit_dir/mock-state"
+          sampler_pid=""
+          mock_pid=""
+          stream_pid=""
+          cleanup() {
+            for pid in "$sampler_pid" "$stream_pid" "$mock_pid"; do
+              if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null || true; fi
+            done
+            docker rm -f sub2api-humanwill-audit sub2api-humanwill-smoke >/dev/null 2>&1 || true
+            docker volume rm sub2api-humanwill-audit-data >/dev/null 2>&1 || true
+          }
           trap cleanup EXIT
-          docker run -d --name sub2api-humanwill-audit --network host \
-            --cpus 0.5 --memory 512m --memory-swap 512m --pids-limit 128 \
-            --ulimit nofile=16384:16384 \
+
+          start_sampler() {
+            local phase="$1"
+            python3 tools/container_resource_sampler.py \
+              --container sub2api-humanwill-audit \
+              --output "$audit_dir/${phase}.json" --interval 1 &
+            sampler_pid=$!
+          }
+          stop_sampler() {
+            local phase="$1"
+            kill -TERM "$sampler_pid"
+            wait "$sampler_pid"
+            sampler_pid=""
+            test "$(jq -r '.sample_count > 0' "$audit_dir/${phase}.json")" = true
+          }
+          wait_for_health() {
+            for attempt in $(seq 1 90); do
+              if curl --silent --fail http://127.0.0.1:18080/health >/dev/null; then return; fi
+              if [ "$attempt" -eq 90 ]; then
+                docker logs --tail=100 sub2api-humanwill-audit || true
+                return 1
+              fi
+              sleep 1
+            done
+          }
+
+          python3 tools/mock_openai_upstream.py \
+            --port 19090 --state-file "$mock_state" >"$audit_dir/mock.log" 2>&1 &
+          mock_pid=$!
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:19090/health >/dev/null; then break; fi
+            test "$attempt" -ne 30
+            sleep 1
+          done
+
+          docker volume create sub2api-humanwill-audit-data >/dev/null
+          docker create --name sub2api-humanwill-audit --network host \
+            --cpus 2 --memory 2g --memory-swap 2g --pids-limit 512 \
+            --ulimit nofile=65536:65536 \
+            --volume sub2api-humanwill-audit-data:/app/data \
             -e RUN_MODE=simple -e AUTO_SETUP=true -e DATA_DIR=/app/data \
             -e SERVER_HOST=127.0.0.1 -e SERVER_PORT=18080 \
             -e DATABASE_HOST=127.0.0.1 -e DATABASE_PORT=55432 \
@@ -89,46 +139,178 @@ jobs:
             -e JWT_SECRET=audit-only-jwt-secret-at-least-32-characters \
             sub2api-humanwill-audit:ci >/dev/null
 
-          for attempt in $(seq 1 60); do
-            if curl --silent --fail http://127.0.0.1:18080/health >/dev/null; then break; fi
-            if [ "$attempt" -eq 60 ]; then docker logs --tail=100 sub2api-humanwill-audit; exit 1; fi
-            sleep 1
-          done
+          test "$(docker image inspect --format '{{.Architecture}}' sub2api-humanwill-audit:ci)" = amd64
+          test "$(docker inspect --format '{{.HostConfig.NanoCpus}}' sub2api-humanwill-audit)" = 2000000000
+          test "$(docker inspect --format '{{.HostConfig.Memory}}' sub2api-humanwill-audit)" = 2147483648
+          test "$(docker inspect --format '{{.HostConfig.MemorySwap}}' sub2api-humanwill-audit)" = 2147483648
+          test "$(docker inspect --format '{{.HostConfig.PidsLimit}}' sub2api-humanwill-audit)" = 512
+          test "$(docker inspect --format '{{range .HostConfig.Ulimits}}{{if eq .Name "nofile"}}{{.Soft}}:{{.Hard}}{{end}}{{end}}' sub2api-humanwill-audit)" = 65536:65536
 
-          startup_stats="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-audit)"
-          models_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' http://127.0.0.1:18080/v1/models)"
-          responses_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/v1/responses)"
-          chat_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","messages":[]}' http://127.0.0.1:18080/v1/chat/completions)"
-          codex_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/backend-api/codex/responses)"
-          echo "Compatibility status: models=${models_status}, responses=${responses_status}, chat=${chat_status}, codex=${codex_status}"
-          test "$models_status" = 401
-          test "$responses_status" = 401
-          test "$chat_status" = 401
-          test "$codex_status" = 401
-          management_stats="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-audit)"
+          start_sampler migration
+          docker start sub2api-humanwill-audit >/dev/null
+          wait_for_health
+          stop_sampler migration
+
+          python3 tools/container_resource_sampler.py \
+            --container sub2api-humanwill-audit \
+            --output "$audit_dir/idle.json" --interval 5 --duration 300
+
+          start_sampler management
+          login_response="$(curl --silent --show-error --fail-with-body \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"audit@example.invalid","password":"audit-only-admin-password"}' \
+            http://127.0.0.1:18080/api/v1/auth/login)"
+          admin_token="$(jq -er '.data.access_token' <<<"$login_response")"
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" -H 'Content-Type: application/json' \
+            -d '{"phrase":"I have read, understood, and agree to the Sub2API Deployment and Operation Compliance Commitment","language":"en"}' \
+            http://127.0.0.1:18080/api/v1/admin/compliance/accept \
+            | jq -e '.code == 0 and .data.required == false' >/dev/null
+          groups_response="$(curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" \
+            http://127.0.0.1:18080/api/v1/groups/available)"
+          openai_group_id="$(jq -er 'first(.data[] | select(.platform == "openai")).id' <<<"$groups_response")"
+          account_payload="$(jq -nc --argjson group_id "$openai_group_id" '{name:"mock-openai",platform:"openai",type:"apikey",credentials:{api_key:"audit-only-upstream-key",base_url:"http://127.0.0.1:19090/v1"},concurrency:1,priority:1,group_ids:[$group_id]}')"
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" -H 'Content-Type: application/json' \
+            -d "$account_payload" http://127.0.0.1:18080/api/v1/admin/accounts \
+            | jq -e '.code == 0 and .data.id > 0' >/dev/null
+          key_payload="$(jq -nc --argjson group_id "$openai_group_id" '{name:"runtime-audit",custom_key:"sk-audit-only-application-key",group_id:$group_id}')"
+          key_response="$(curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" -H 'Content-Type: application/json' \
+            -d "$key_payload" http://127.0.0.1:18080/api/v1/keys)"
+          application_key="$(jq -er '.data.key' <<<"$key_response")"
+          test "$application_key" = sk-audit-only-application-key
+          stop_sampler management
+
+          sleep 2
+          start_sampler streaming
+          curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
+            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
+            -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
+            http://127.0.0.1:18080/v1/responses >"$audit_dir/responses.sse"
+          curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
+            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
+            -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
+            http://127.0.0.1:18080/backend-api/codex/responses >"$audit_dir/codex.sse"
+          stop_sampler streaming
+          for output in "$audit_dir/responses.sse" "$audit_dir/codex.sse"; do
+            grep -q 'response.created' "$output"
+            grep -q 'response.output_text.delta' "$output"
+            grep -q 'response.completed' "$output"
+            grep -q 'audit-ok' "$output"
+          done
 
           maintenance_schema_absent="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tAc "SELECT to_regclass('public.schema_migrations') IS NULL" | tr -d '\r')"
           migration_count="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_audit -tAc "SELECT COUNT(*) FROM schema_migrations" | tr -d '\r')"
           redis_sentinel="$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 GET humanwill:audit:sentinel | tr -d '\r')"
-          echo "Isolation status: maintenance_schema_absent=${maintenance_schema_absent}, migration_count=${migration_count}, redis_db0_sentinel=${redis_sentinel}"
+          redis_db0_size="$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 DBSIZE | tr -d '\r')"
+          redis_db9_size="$(docker exec "$REDIS_CONTAINER" redis-cli -n 9 DBSIZE | tr -d '\r')"
           test "$maintenance_schema_absent" = t
           test "$migration_count" -gt 0
           test "$redis_sentinel" = untouched
+          test "$redis_db0_size" = 1
+          test "$redis_db9_size" -gt 0
+          for redis_db in 1 2 3 4 5 6 7 8 10 11 12 13 14 15; do
+            test "$(docker exec "$REDIS_CONTAINER" redis-cli -n "$redis_db" DBSIZE | tr -d '\r')" = 0
+          done
 
+          idle_stop_started="$(date +%s%3N)"
           docker stop --time 10 sub2api-humanwill-audit >/dev/null
-          exit_code="$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-audit)"
-          echo "Graceful exit code: ${exit_code}"
-          test "$exit_code" = 0
+          idle_stop_ms="$(( $(date +%s%3N) - idle_stop_started ))"
+          idle_exit_code="$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-audit)"
+          test "$idle_exit_code" = 0
+          docker start sub2api-humanwill-audit >/dev/null
+          wait_for_health
+
+          start_sampler stream-shutdown
+          set +e
+          curl --silent --show-error --fail-with-body --no-buffer --max-time 40 \
+            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
+            -d '{"model":"gpt-5.4","input":"AUDIT_SLOW_STREAM","stream":true}' \
+            http://127.0.0.1:18080/v1/responses >"$audit_dir/slow.sse" 2>"$audit_dir/slow-curl.log" &
+          stream_pid=$!
+          set -e
+          for attempt in $(seq 1 20); do
+            if grep -q '^slow-started$' "$mock_state" && grep -q 'response.created' "$audit_dir/slow.sse"; then break; fi
+            test "$attempt" -ne 20
+            sleep 1
+          done
+          stream_stop_started="$(date +%s%3N)"
+          docker stop --time 10 sub2api-humanwill-audit >/dev/null
+          stream_stop_ms="$(( $(date +%s%3N) - stream_stop_started ))"
+          stream_exit_code="$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-audit)"
+          test "$stream_exit_code" = 0
+          set +e
+          wait "$stream_pid"
+          stream_curl_status=$?
+          set -e
+          stream_pid=""
+          stop_sampler stream-shutdown
+          if grep -q 'response.completed' "$audit_dir/slow.sse"; then
+            stream_outcome=completed
+          else
+            grep -q 'response.created' "$audit_dir/slow.sse"
+            stream_outcome=interrupted
+          fi
+
+          docker run -d --name sub2api-humanwill-smoke --network host \
+            --cpus 0.5 --memory 512m --memory-swap 512m --pids-limit 128 \
+            --ulimit nofile=16384:16384 \
+            --volume sub2api-humanwill-audit-data:/app/data \
+            -e RUN_MODE=simple -e AUTO_SETUP=false -e DATA_DIR=/app/data \
+            -e SERVER_HOST=127.0.0.1 -e SERVER_PORT=18080 \
+            -e DATABASE_HOST=127.0.0.1 -e DATABASE_PORT=55432 \
+            -e DATABASE_USER=sub2api_audit -e DATABASE_PASSWORD=audit-only-app-password \
+            -e DATABASE_DBNAME=sub2api_audit -e DATABASE_SSLMODE=disable \
+            -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=56379 -e REDIS_DB=9 \
+            -e JWT_SECRET=audit-only-jwt-secret-at-least-32-characters \
+            sub2api-humanwill-audit:ci >/dev/null
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:18080/health >/dev/null; then break; fi
+            if [ "$attempt" -eq 60 ]; then docker logs --tail=100 sub2api-humanwill-smoke; exit 1; fi
+            sleep 1
+          done
+          test "$(docker inspect --format '{{.HostConfig.NanoCpus}}' sub2api-humanwill-smoke)" = 500000000
+          test "$(docker inspect --format '{{.HostConfig.Memory}}' sub2api-humanwill-smoke)" = 536870912
+          test "$(docker inspect --format '{{.HostConfig.MemorySwap}}' sub2api-humanwill-smoke)" = 536870912
+          test "$(docker inspect --format '{{.HostConfig.PidsLimit}}' sub2api-humanwill-smoke)" = 128
+          test "$(docker inspect --format '{{range .HostConfig.Ulimits}}{{if eq .Name "nofile"}}{{.Soft}}:{{.Hard}}{{end}}{{end}}' sub2api-humanwill-smoke)" = 16384:16384
+          smoke_sample="$(docker stats --no-stream --format '{{.CPUPerc}} | {{.MemUsage}} | {{.PIDs}}' sub2api-humanwill-smoke)"
+          docker stop --time 10 sub2api-humanwill-smoke >/dev/null
+          test "$(docker inspect --format '{{.State.ExitCode}}' sub2api-humanwill-smoke)" = 0
+
+          phase_summary() {
+            local phase="$1"
+            jq -r '"sample CPU/memory/PIDs " + (.samples[0].cpu_percent | tostring) + "%/" + ((.samples[0].memory_bytes / 1048576 * 100 | round) / 100 | tostring) + " MiB/" + (.samples[0].pids | tostring) + "; peaks " + (.cpu_peak_percent | tostring) + "%/" + ((.memory_peak_bytes / 1048576 * 100 | round) / 100 | tostring) + " MiB/" + (.pids_peak | tostring) + " (" + (.sample_count | tostring) + " samples)"' "$audit_dir/${phase}.json"
+          }
+          migration_summary="$(phase_summary migration)"
+          idle_summary="$(phase_summary idle)"
+          management_summary="$(phase_summary management)"
+          streaming_summary="$(phase_summary streaming)"
+          shutdown_summary="$(phase_summary stream-shutdown)"
+          echo "Migration/startup: $migration_summary"
+          echo "Five-minute idle: $idle_summary"
+          echo "Management: $management_summary"
+          echo "Authenticated streaming: $streaming_summary"
+          echo "Stream-active shutdown: $shutdown_summary"
+          echo "Isolation: maintenance_schema_absent=$maintenance_schema_absent migration_count=$migration_count redis_db0_size=$redis_db0_size redis_db9_size=$redis_db9_size"
+          echo "SIGTERM: idle=${idle_stop_ms}ms active=${stream_stop_ms}ms stream_outcome=$stream_outcome curl_status=$stream_curl_status"
           {
             echo '### Low-resource runtime audit'
             echo
             echo '- PostgreSQL 16: dedicated role/database migration passed'
-            echo '- Redis 7: DB 0 sentinel survived while application selected DB 9'
-            echo '- Candidate limit: 0.5 CPU, 512 MiB memory/swap, 128 PIDs, NOFILE 16384'
-            echo "- Post-start sample (CPU | memory | PIDs): ${startup_stats}"
-            echo "- Compatibility-request sample (CPU | memory | PIDs): ${management_stats}"
-            echo '- SIGTERM graceful exit: passed within 10 seconds'
-            echo '- Streaming peak with authenticated local mock upstream: deferred (no upstream/account fixture in this audit)'
+            echo '- Redis 7: DB 0 sentinel is unchanged and is its only key; application keys exist in DB 9 only'
+            echo '- Production candidate effective limit: 2 vCPU, 2 GiB memory/swap, 512 PIDs, NOFILE 65536'
+            echo "- Migration/startup: ${migration_summary}"
+            echo "- Five-minute idle: ${idle_summary}"
+            echo "- Management API operations: ${management_summary}"
+            echo "- Authenticated mock streaming: ${streaming_summary}"
+            echo "- Stream-active shutdown: ${shutdown_summary}"
+            echo '- Routes: authenticated `/v1/responses` and `/backend-api/codex/responses` returned valid local-mock SSE terminal events'
+            echo "- Idle SIGTERM: exit 0 in ${idle_stop_ms} ms"
+            echo "- Active-stream SIGTERM: exit 0 in ${stream_stop_ms} ms; client stream ${stream_outcome} (curl status ${stream_curl_status})"
+            echo "- Minimum smoke only: 0.5 vCPU, 512 MiB memory/swap, 128 PIDs, NOFILE 16384; sample ${smoke_sample}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   shell:

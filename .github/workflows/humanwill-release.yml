@@ -50,6 +50,11 @@ jobs:
           ACTUAL_SHA="$(git rev-parse HEAD)"
           [[ "$ACTUAL_SHA" == "${SOURCE_SHA,,}" ]] || { echo "checked out commit does not match source_sha" >&2; exit 1; }
           git cat-file -e "$ACTUAL_SHA^{commit}"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$ACTUAL_SHA" refs/remotes/origin/main; then
+            echo "source_sha must already be merged into origin/main" >&2
+            exit 1
+          fi
           echo "source_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
