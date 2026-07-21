@@ -40,6 +40,26 @@ COMPLETED = {
 }
 
 
+def probe_response(model: str) -> dict[str, object]:
+    return {
+        "id": "resp_audit_probe",
+        "object": "response",
+        "model": model,
+        "status": "completed",
+        "output": [
+            {
+                "type": "function_call",
+                "id": "fc_audit_probe",
+                "call_id": "call_audit_probe",
+                "name": "probe_ping",
+                "arguments": '{"ok":true}',
+                "status": "completed",
+            }
+        ],
+        "usage": {"input_tokens": 11, "output_tokens": 5, "total_tokens": 16},
+    }
+
+
 class AuditServer(ThreadingHTTPServer):
     state_file: Path
 
@@ -77,6 +97,22 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             self.server.record("json-rejected")
             self.send_error(400)
+            return
+
+        if body.get("stream") is False:
+            self.server.record("probe-started")
+            payload = json.dumps(
+                probe_response(str(body.get("model", "gpt-5.4"))),
+                separators=(",", ":"),
+            ).encode("ascii")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("X-Request-Id", "mock-audit-probe-request")
+            self.end_headers()
+            self.wfile.write(payload)
+            self.wfile.flush()
+            self.server.record("probe-completed")
             return
 
         slow = "AUDIT_SLOW_STREAM" in json.dumps(body, separators=(",", ":"))

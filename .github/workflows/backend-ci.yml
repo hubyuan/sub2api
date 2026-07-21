@@ -179,6 +179,16 @@ jobs:
           test "$application_key" = sk-audit-only-application-key
           stop_sampler management
 
+          for attempt in $(seq 1 30); do
+            if grep -q '^probe-completed$' "$mock_state"; then break; fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'OpenAI Responses capability probe did not complete' >&2
+              sed -n '1,40p' "$mock_state" >&2
+              docker logs --tail=100 sub2api-humanwill-audit >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
           sleep 2
           request_fast_stream() {
             local route="$1"
