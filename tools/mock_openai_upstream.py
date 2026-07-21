@@ -65,7 +65,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/responses":
             self.send_error(404)
             return
+        self.server.record("request-received")
         if self.headers.get("Authorization") != "Bearer audit-only-upstream-key":
+            self.server.record("auth-rejected")
             self.send_error(401)
             return
 
@@ -73,6 +75,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
+            self.server.record("json-rejected")
             self.send_error(400)
             return
 

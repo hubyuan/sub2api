@@ -151,10 +151,6 @@ jobs:
           wait_for_health
           stop_sampler migration
 
-          python3 tools/container_resource_sampler.py \
-            --container sub2api-humanwill-audit \
-            --output "$audit_dir/idle.json" --interval 5 --duration 300
-
           start_sampler management
           login_response="$(curl --silent --show-error --fail-with-body \
             -H 'Content-Type: application/json' \
@@ -184,15 +180,28 @@ jobs:
           stop_sampler management
 
           sleep 2
+          request_fast_stream() {
+            local route="$1"
+            local output="$2"
+            local status=""
+            for attempt in $(seq 1 20); do
+              status="$(curl --silent --show-error --no-buffer --max-time 30 \
+                --output "$output" --write-out '%{http_code}' \
+                -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
+                -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
+                "http://127.0.0.1:18080${route}" || true)"
+              if [ "$status" = 200 ]; then return; fi
+              sleep 1
+            done
+            echo "Authenticated stream failed: route=${route} status=${status}" >&2
+            sed -n '1,20p' "$output" >&2
+            echo 'Mock state:' >&2
+            sed -n '1,40p' "$mock_state" >&2
+            return 1
+          }
           start_sampler streaming
-          curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
-            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
-            -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
-            http://127.0.0.1:18080/v1/responses >"$audit_dir/responses.sse"
-          curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
-            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
-            -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
-            http://127.0.0.1:18080/backend-api/codex/responses >"$audit_dir/codex.sse"
+          request_fast_stream /v1/responses "$audit_dir/responses.sse"
+          request_fast_stream /backend-api/codex/responses "$audit_dir/codex.sse"
           stop_sampler streaming
           for output in "$audit_dir/responses.sse" "$audit_dir/codex.sse"; do
             grep -q 'response.created' "$output"
@@ -214,6 +223,10 @@ jobs:
           for redis_db in 1 2 3 4 5 6 7 8 10 11 12 13 14 15; do
             test "$(docker exec "$REDIS_CONTAINER" redis-cli -n "$redis_db" DBSIZE | tr -d '\r')" = 0
           done
+
+          python3 tools/container_resource_sampler.py \
+            --container sub2api-humanwill-audit \
+            --output "$audit_dir/idle.json" --interval 5 --duration 300
 
           idle_stop_started="$(date +%s%3N)"
           docker stop --time 10 sub2api-humanwill-audit >/dev/null
