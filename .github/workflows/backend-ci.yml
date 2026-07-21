@@ -99,7 +99,7 @@ jobs:
           models_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' http://127.0.0.1:18080/v1/models)"
           responses_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/v1/responses)"
           chat_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","messages":[]}' http://127.0.0.1:18080/v1/chat/completions)"
-          codex_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/openai/v1/responses)"
+          codex_status="$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer audit-invalid' -H 'Content-Type: application/json' -d '{"model":"audit","input":"hello","stream":true}' http://127.0.0.1:18080/backend-api/codex/responses)"
           echo "Compatibility status: models=${models_status}, responses=${responses_status}, chat=${chat_status}, codex=${codex_status}"
           test "$models_status" = 401
           test "$responses_status" = 401
