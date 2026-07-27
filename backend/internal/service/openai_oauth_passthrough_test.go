@@ -31,6 +31,7 @@ type httpUpstreamRecorder struct {
 	lastProxyURL string
 	requests     []*http.Request
 	bodies       [][]byte
+	accountIDs   []int64
 
 	resp      *http.Response
 	responses []*http.Response
@@ -73,6 +74,7 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 		req.Body = io.NopCloser(bytes.NewReader(b))
 	}
 	u.requests = append(u.requests, req)
+	u.accountIDs = append(u.accountIDs, accountID)
 	if u.err != nil {
 		return nil, u.err
 	}

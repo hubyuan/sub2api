@@ -26,6 +26,12 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func TestShouldReportOpenAIForwardScheduleFailure(t *testing.T) {
+	require.True(t, shouldReportOpenAIForwardScheduleFailure(errors.New("upstream failure")))
+	require.False(t, shouldReportOpenAIForwardScheduleFailure(&service.OpenAIReasoningContentArrayClientError{}))
+	require.False(t, shouldReportOpenAIForwardScheduleFailure(nil))
+}
+
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string
