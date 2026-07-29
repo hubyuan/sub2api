@@ -915,6 +915,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var firstSSEEventMs *int
 		responseID := ""
 		imageCount := 0
 		var imageOutputSizes []string
@@ -925,6 +926,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
+			firstSSEEventMs = streamResult.firstSSEEventMs
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
@@ -965,6 +967,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
+			FirstSSEEventMs: firstSSEEventMs,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

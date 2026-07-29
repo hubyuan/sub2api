@@ -599,6 +599,7 @@ export interface ApiKey {
   created_at: string
   updated_at: string
   current_concurrency: number
+  openai_responses_stream_event_mode: OpenAIResponsesStreamEventMode
   group?: Group
   rate_limit_5h: number
   rate_limit_1d: number
@@ -614,6 +615,8 @@ export interface ApiKey {
   reset_7d_at: string | null
 }
 
+export type OpenAIResponsesStreamEventMode = 'strict' | 'early_event'
+
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
@@ -625,6 +628,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  openai_responses_stream_event_mode?: OpenAIResponsesStreamEventMode
 }
 
 export interface UpdateApiKeyRequest {
@@ -640,6 +644,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  openai_responses_stream_event_mode?: OpenAIResponsesStreamEventMode
 }
 
 export interface CreateGroupRequest {
@@ -1436,6 +1441,7 @@ export interface UsageLog {
   openai_ws_mode?: boolean
   duration_ms: number | null
   first_token_ms: number | null
+  first_sse_event_ms: number | null
 
   // 图片生成字段
   image_count: number
