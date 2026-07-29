@@ -66,7 +66,8 @@ type APIKey struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
-	CurrentConcurrency int `json:"current_concurrency"`
+	CurrentConcurrency             int    `json:"current_concurrency"`
+	OpenAIResponsesStreamEventMode string `json:"openai_responses_stream_event_mode"`
 
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`
@@ -491,12 +492,13 @@ type UsageLog struct {
 	RateMultiplier            float64 `json:"rate_multiplier"`
 	LongContextBillingApplied bool    `json:"long_context_billing_applied"`
 
-	BillingType  int8   `json:"billing_type"`
-	RequestType  string `json:"request_type"`
-	Stream       bool   `json:"stream"`
-	OpenAIWSMode bool   `json:"openai_ws_mode"`
-	DurationMs   *int   `json:"duration_ms"`
-	FirstTokenMs *int   `json:"first_token_ms"`
+	BillingType     int8   `json:"billing_type"`
+	RequestType     string `json:"request_type"`
+	Stream          bool   `json:"stream"`
+	OpenAIWSMode    bool   `json:"openai_ws_mode"`
+	DurationMs      *int   `json:"duration_ms"`
+	FirstTokenMs    *int   `json:"first_token_ms"`
+	FirstSSEEventMs *int   `json:"first_sse_event_ms"`
 
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`

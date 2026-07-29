@@ -95,6 +95,11 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 }
 
+// OpenaiResponsesStreamEventMode applies equality check predicate on the "openai_responses_stream_event_mode" field. It's identical to OpenaiResponsesStreamEventModeEQ.
+func OpenaiResponsesStreamEventMode(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldOpenaiResponsesStreamEventMode, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -533,6 +538,71 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// OpenaiResponsesStreamEventModeEQ applies the EQ predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeNEQ applies the NEQ predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeIn applies the In predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldOpenaiResponsesStreamEventMode, vs...))
+}
+
+// OpenaiResponsesStreamEventModeNotIn applies the NotIn predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldOpenaiResponsesStreamEventMode, vs...))
+}
+
+// OpenaiResponsesStreamEventModeGT applies the GT predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeGTE applies the GTE predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeLT applies the LT predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeLTE applies the LTE predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeContains applies the Contains predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeHasPrefix applies the HasPrefix predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeHasSuffix applies the HasSuffix predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeEqualFold applies the EqualFold predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldOpenaiResponsesStreamEventMode, v))
+}
+
+// OpenaiResponsesStreamEventModeContainsFold applies the ContainsFold predicate on the "openai_responses_stream_event_mode" field.
+func OpenaiResponsesStreamEventModeContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldOpenaiResponsesStreamEventMode, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

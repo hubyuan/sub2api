@@ -121,6 +121,10 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int("first_token_ms").
 			Optional().
 			Nillable(),
+		field.Int("first_sse_event_ms").
+			Optional().
+			Nillable().
+			Comment("Latency until the first complete real SSE data event is flushed downstream"),
 		field.String("user_agent").
 			MaxLen(512).
 			Optional().

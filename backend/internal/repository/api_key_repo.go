@@ -46,6 +46,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
+		SetOpenaiResponsesStreamEventMode(service.NormalizeOpenAIResponsesStreamEventMode(key.OpenAIResponsesStreamEventMode)).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
@@ -134,6 +135,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
+			apikey.FieldOpenaiResponsesStreamEventMode,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -231,6 +233,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetName(key.Name).
 		SetStatus(key.Status).
+		SetOpenaiResponsesStreamEventMode(service.NormalizeOpenAIResponsesStreamEventMode(key.OpenAIResponsesStreamEventMode)).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
 		SetRateLimit5h(key.RateLimit5h).
@@ -825,29 +828,30 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:                             m.ID,
+		UserID:                         m.UserID,
+		Key:                            m.Key,
+		Name:                           m.Name,
+		Status:                         m.Status,
+		OpenAIResponsesStreamEventMode: service.NormalizeOpenAIResponsesStreamEventMode(m.OpenaiResponsesStreamEventMode),
+		IPWhitelist:                    m.IPWhitelist,
+		IPBlacklist:                    m.IPBlacklist,
+		LastUsedAt:                     m.LastUsedAt,
+		CreatedAt:                      m.CreatedAt,
+		UpdatedAt:                      m.UpdatedAt,
+		GroupID:                        m.GroupID,
+		Quota:                          m.Quota,
+		QuotaUsed:                      m.QuotaUsed,
+		ExpiresAt:                      m.ExpiresAt,
+		RateLimit5h:                    m.RateLimit5h,
+		RateLimit1d:                    m.RateLimit1d,
+		RateLimit7d:                    m.RateLimit7d,
+		Usage5h:                        m.Usage5h,
+		Usage1d:                        m.Usage1d,
+		Usage7d:                        m.Usage7d,
+		Window5hStart:                  m.Window5hStart,
+		Window1dStart:                  m.Window1dStart,
+		Window7dStart:                  m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

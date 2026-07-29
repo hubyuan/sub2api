@@ -144,6 +144,24 @@ func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 	}))
 }
 
+type openAITestScheduleFailureError struct {
+	report bool
+}
+
+func (e openAITestScheduleFailureError) Error() string {
+	return "stream failed"
+}
+
+func (e openAITestScheduleFailureError) ShouldReportAccountScheduleFailure() bool {
+	return e.report
+}
+
+func TestShouldReportOpenAIForwardScheduleFailure_RespectsErrorClassification(t *testing.T) {
+	require.True(t, shouldReportOpenAIForwardScheduleFailure(errors.New("transport failure")))
+	require.True(t, shouldReportOpenAIForwardScheduleFailure(openAITestScheduleFailureError{report: true}))
+	require.False(t, shouldReportOpenAIForwardScheduleFailure(openAITestScheduleFailureError{report: false}))
+}
+
 func TestOpenAIResponsesRequiredCapability(t *testing.T) {
 	tests := []struct {
 		name        string

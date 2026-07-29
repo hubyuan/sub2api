@@ -215,6 +215,11 @@ func FirstTokenMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldFirstTokenMs, v))
 }
 
+// FirstSseEventMs applies equality check predicate on the "first_sse_event_ms" field. It's identical to FirstSseEventMsEQ.
+func FirstSseEventMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFirstSseEventMs, v))
+}
+
 // UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
 func UserAgent(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
@@ -1678,6 +1683,56 @@ func FirstTokenMsIsNil() predicate.UsageLog {
 // FirstTokenMsNotNil applies the NotNil predicate on the "first_token_ms" field.
 func FirstTokenMsNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldFirstTokenMs))
+}
+
+// FirstSseEventMsEQ applies the EQ predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFirstSseEventMs, v))
+}
+
+// FirstSseEventMsNEQ applies the NEQ predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldFirstSseEventMs, v))
+}
+
+// FirstSseEventMsIn applies the In predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldFirstSseEventMs, vs...))
+}
+
+// FirstSseEventMsNotIn applies the NotIn predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldFirstSseEventMs, vs...))
+}
+
+// FirstSseEventMsGT applies the GT predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldFirstSseEventMs, v))
+}
+
+// FirstSseEventMsGTE applies the GTE predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldFirstSseEventMs, v))
+}
+
+// FirstSseEventMsLT applies the LT predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldFirstSseEventMs, v))
+}
+
+// FirstSseEventMsLTE applies the LTE predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldFirstSseEventMs, v))
+}
+
+// FirstSseEventMsIsNil applies the IsNil predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldFirstSseEventMs))
+}
+
+// FirstSseEventMsNotNil applies the NotNil predicate on the "first_sse_event_ms" field.
+func FirstSseEventMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldFirstSseEventMs))
 }
 
 // UserAgentEQ applies the EQ predicate on the "user_agent" field.

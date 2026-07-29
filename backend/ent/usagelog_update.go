@@ -672,6 +672,33 @@ func (_u *UsageLogUpdate) ClearFirstTokenMs() *UsageLogUpdate {
 	return _u
 }
 
+// SetFirstSseEventMs sets the "first_sse_event_ms" field.
+func (_u *UsageLogUpdate) SetFirstSseEventMs(v int) *UsageLogUpdate {
+	_u.mutation.ResetFirstSseEventMs()
+	_u.mutation.SetFirstSseEventMs(v)
+	return _u
+}
+
+// SetNillableFirstSseEventMs sets the "first_sse_event_ms" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableFirstSseEventMs(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetFirstSseEventMs(*v)
+	}
+	return _u
+}
+
+// AddFirstSseEventMs adds value to the "first_sse_event_ms" field.
+func (_u *UsageLogUpdate) AddFirstSseEventMs(v int) *UsageLogUpdate {
+	_u.mutation.AddFirstSseEventMs(v)
+	return _u
+}
+
+// ClearFirstSseEventMs clears the value of the "first_sse_event_ms" field.
+func (_u *UsageLogUpdate) ClearFirstSseEventMs() *UsageLogUpdate {
+	_u.mutation.ClearFirstSseEventMs()
+	return _u
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_u *UsageLogUpdate) SetUserAgent(v string) *UsageLogUpdate {
 	_u.mutation.SetUserAgent(v)
@@ -1251,6 +1278,15 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.FirstSseEventMs(); ok {
+		_spec.SetField(usagelog.FieldFirstSseEventMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFirstSseEventMs(); ok {
+		_spec.AddField(usagelog.FieldFirstSseEventMs, field.TypeInt, value)
+	}
+	if _u.mutation.FirstSseEventMsCleared() {
+		_spec.ClearField(usagelog.FieldFirstSseEventMs, field.TypeInt)
 	}
 	if value, ok := _u.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -2129,6 +2165,33 @@ func (_u *UsageLogUpdateOne) ClearFirstTokenMs() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetFirstSseEventMs sets the "first_sse_event_ms" field.
+func (_u *UsageLogUpdateOne) SetFirstSseEventMs(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetFirstSseEventMs()
+	_u.mutation.SetFirstSseEventMs(v)
+	return _u
+}
+
+// SetNillableFirstSseEventMs sets the "first_sse_event_ms" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableFirstSseEventMs(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetFirstSseEventMs(*v)
+	}
+	return _u
+}
+
+// AddFirstSseEventMs adds value to the "first_sse_event_ms" field.
+func (_u *UsageLogUpdateOne) AddFirstSseEventMs(v int) *UsageLogUpdateOne {
+	_u.mutation.AddFirstSseEventMs(v)
+	return _u
+}
+
+// ClearFirstSseEventMs clears the value of the "first_sse_event_ms" field.
+func (_u *UsageLogUpdateOne) ClearFirstSseEventMs() *UsageLogUpdateOne {
+	_u.mutation.ClearFirstSseEventMs()
+	return _u
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_u *UsageLogUpdateOne) SetUserAgent(v string) *UsageLogUpdateOne {
 	_u.mutation.SetUserAgent(v)
@@ -2738,6 +2801,15 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.FirstSseEventMs(); ok {
+		_spec.SetField(usagelog.FieldFirstSseEventMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFirstSseEventMs(); ok {
+		_spec.AddField(usagelog.FieldFirstSseEventMs, field.TypeInt, value)
+	}
+	if _u.mutation.FirstSseEventMsCleared() {
+		_spec.ClearField(usagelog.FieldFirstSseEventMs, field.TypeInt)
 	}
 	if value, ok := _u.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
