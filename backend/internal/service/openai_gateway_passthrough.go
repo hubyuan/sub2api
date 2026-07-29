@@ -731,13 +731,6 @@ type openaiNonStreamingResultPassthrough struct {
 	imageOutputSizes []string
 }
 
-func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
-	if localStarted {
-		return true
-	}
-	return c != nil && c.Writer != nil && c.Writer.Written()
-}
-
 func openAIStreamEventIsPreamble(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
 	case "response.created", "response.in_progress":
