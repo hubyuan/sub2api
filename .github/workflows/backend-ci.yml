@@ -199,11 +199,21 @@ jobs:
           create_upgrade_container "$CURRENT_IMAGE" false
           docker start "$container" >/dev/null
           wait_for_upgrade_health
-          curl --silent --show-error --fail-with-body \
+          old_login_response="$RUNNER_TEMP/sub2api-upgrade-old-login.json"
+          old_login_status="$(curl --silent --show-error --output "$old_login_response" --write-out '%{http_code}' \
             -H 'Content-Type: application/json' \
             -d '{"email":"upgrade@example.invalid","password":"audit-only-admin-password"}' \
-            http://127.0.0.1:18081/api/v1/auth/login \
-            | jq -e '.data.access_token | length > 0' >/dev/null
+            http://127.0.0.1:18081/api/v1/auth/login || true)"
+          if [ "$old_login_status" != 200 ] || ! jq -e '.data.access_token | strings | length > 0' "$old_login_response" >/dev/null; then
+            echo "Production .4 rollback login failed: status=$old_login_status" >&2
+            if jq -e . "$old_login_response" >/dev/null 2>&1; then
+              jq -c '{code, message, error: (if (.error | type) == "object" then {type: .error.type, code: .error.code, message: .error.message} else .error end)}' "$old_login_response" >&2
+            else
+              echo "Production .4 rollback login returned non-JSON: bytes=$(wc -c < "$old_login_response")" >&2
+            fi
+            docker logs --tail=100 "$container" >&2 || true
+            exit 1
+          fi
           curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
             -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
             -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \

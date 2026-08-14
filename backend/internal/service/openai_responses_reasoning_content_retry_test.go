@@ -307,8 +307,10 @@ func TestOpenAIGatewayServiceOrdinary400KeepsExistingBehavior(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Len(t, upstream.bodies, 1)
-	require.Equal(t, http.StatusBadGateway, recorder.Code)
-	require.Equal(t, "Upstream request failed", gjson.GetBytes(recorder.Body.Bytes(), "error.message").String())
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Equal(t, "invalid_value", gjson.GetBytes(recorder.Body.Bytes(), "error.code").String())
+	require.Equal(t, "input", gjson.GetBytes(recorder.Body.Bytes(), "error.param").String())
+	require.Equal(t, "ordinary bad request", gjson.GetBytes(recorder.Body.Bytes(), "error.message").String())
 }
 
 func reasoningContentArrayErrorBody(param string) string {
