@@ -142,10 +142,22 @@ jobs:
           seeded_group_id="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
             "SELECT id FROM groups WHERE platform IS DISTINCT FROM 'grok' AND platform IS DISTINCT FROM 'composite' ORDER BY id LIMIT 1" | tr -d '\r')"
           test -n "$seeded_group_id"
+
+          # Let migration 217 create the final price column before seeding nonzero data for migration 220.
+          expected_220_checksum="$(python3 -c 'import hashlib, pathlib; print(hashlib.sha256(pathlib.Path("backend/migrations/220_clear_non_grok_video_generation_config.sql").read_text().strip().encode()).hexdigest())')"
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
-            -c "UPDATE groups SET video_price_480p = 0.12345678, video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb WHERE id = ${seeded_group_id}" >/dev/null
+            -c "INSERT INTO schema_migrations (filename, checksum) VALUES ('220_clear_non_grok_video_generation_config.sql', '$expected_220_checksum')" >/dev/null
 
           create_upgrade_container sub2api-humanwill-audit:ci false
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          docker stop --time 10 "$container" >/dev/null
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM schema_migrations WHERE filename = '217_group_video_model_prices.sql'" | tr -d '\r')" = 1
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
+            -c "DELETE FROM schema_migrations WHERE filename = '220_clear_non_grok_video_generation_config.sql'" \
+            -c "UPDATE groups SET video_price_480p = 0.12345678, video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb WHERE id = ${seeded_group_id}" >/dev/null
+
           docker start "$container" >/dev/null
           wait_for_upgrade_health
           docker stop --time 10 "$container" >/dev/null
