@@ -135,7 +135,7 @@ jobs:
           docker stop --time 10 "$container" >/dev/null
           docker rm "$container" >/dev/null
 
-          expected_185_checksum="$(sha256sum backend/migrations/185_add_openai_responses_early_event.sql | awk '{print $1}')"
+          expected_185_checksum="$(python3 -c 'import hashlib, pathlib; print(hashlib.sha256(pathlib.Path("backend/migrations/185_add_openai_responses_early_event.sql").read_text().strip().encode()).hexdigest())')"
           actual_185_checksum="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
             "SELECT checksum FROM schema_migrations WHERE filename = '185_add_openai_responses_early_event.sql'" | tr -d '\r')"
           test "$actual_185_checksum" = "$expected_185_checksum"
