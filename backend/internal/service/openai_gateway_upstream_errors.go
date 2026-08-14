@@ -211,7 +211,7 @@ func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 402, 403, 429, 529:
+	case 401, 402, 403, 405, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
@@ -349,6 +349,19 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		}
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
 	}
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
+		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		MarkResponseCommitted(c)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": clientMsg,
+			},
+		})
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
+	}
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -479,6 +492,24 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 
 	MarkResponseCommitted(c)
 
+	// 上游 400 是确定性的请求错误：同一份请求体换账号、重试多少次都会失败。归一成
+	// 502 upstream_error 会让下游网关把它当成可重试的上游故障反复重放（#5479 实测
+	// 30 个失败请求被放大成 60 次上游调用），同时抹掉客户端定位问题所需的 code/param。
+	//
+	// 走到这里说明 shouldFailoverOpenAIUpstreamResponse 已判定该 400 不可 failover，
+	// 即 server_is_overloaded / at capacity 这类可重试的 400 不会到达此处。
+	//
+	// 兄弟路径早已这么做：handleCompatErrorResponse（ChatCompletions / Anthropic）
+	// 回真实状态码 + invalid_request_error + 真实 message；/v1/images 还额外透传
+	// code/param。原生 Responses 是唯一漏掉的一条。
+	if isOpenAIDeterministicClientError(resp.StatusCode) {
+		writeOpenAIUpstreamClientError(c, resp.StatusCode, body, upstreamMsg)
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	}
+
 	// Return appropriate error response
 	var errType, errMsg string
 	var statusCode int
@@ -562,6 +593,13 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
 		}
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+	}
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
+		clientMsg := grokContentPolicyClientMessage(body)
+		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
+		MarkResponseCommitted(c)
+		writeError(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))

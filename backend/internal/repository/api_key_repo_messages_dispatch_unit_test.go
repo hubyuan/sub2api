@@ -19,6 +19,9 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 		RateMultiplier:        1,
 		AllowMessagesDispatch: true,
 		DefaultMappedModel:    "gpt-5.4",
+		VideoModelPrices: map[string]map[string]float64{
+			service.VideoPriceFamilyGrokImagineVideo15: {service.VideoBillingResolution720P: 0.14},
+		},
 		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel:   "gpt-5.4-nano",
 			SonnetMappedModel: "gpt-5.3-codex",
@@ -32,6 +35,7 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 	got := groupEntityToService(group)
 	require.NotNil(t, got)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
+	require.Equal(t, group.VideoModelPrices, got.VideoModelPrices)
 }
 
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite(t *testing.T) {
@@ -59,17 +63,19 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.NoError(t, err)
 
 	key := &service.APIKey{
-		UserID:  user.ID,
-		Key:     "sk-getbykey-auth-dispatch-unit",
-		Name:    "Dispatch Key Unit",
-		GroupID: &group.ID,
-		Status:  service.StatusActive,
+		UserID:                         user.ID,
+		Key:                            "sk-getbykey-auth-dispatch-unit",
+		Name:                           "Dispatch Key Unit",
+		GroupID:                        &group.ID,
+		Status:                         service.StatusActive,
+		OpenAIResponsesStreamEventMode: service.OpenAIResponsesStreamEventModeEarlyEvent,
 	}
 	require.NoError(t, repo.Create(ctx, key))
 
 	got, err := repo.GetByKeyForAuth(ctx, key.Key)
 	require.NoError(t, err)
 	require.Equal(t, key.Name, got.Name)
+	require.Equal(t, service.OpenAIResponsesStreamEventModeEarlyEvent, got.OpenAIResponsesStreamEventMode)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 }
