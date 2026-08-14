@@ -63,17 +63,19 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.NoError(t, err)
 
 	key := &service.APIKey{
-		UserID:  user.ID,
-		Key:     "sk-getbykey-auth-dispatch-unit",
-		Name:    "Dispatch Key Unit",
-		GroupID: &group.ID,
-		Status:  service.StatusActive,
+		UserID:                         user.ID,
+		Key:                            "sk-getbykey-auth-dispatch-unit",
+		Name:                           "Dispatch Key Unit",
+		GroupID:                        &group.ID,
+		Status:                         service.StatusActive,
+		OpenAIResponsesStreamEventMode: service.OpenAIResponsesStreamEventModeEarlyEvent,
 	}
 	require.NoError(t, repo.Create(ctx, key))
 
 	got, err := repo.GetByKeyForAuth(ctx, key.Key)
 	require.NoError(t, err)
 	require.Equal(t, key.Name, got.Name)
+	require.Equal(t, service.OpenAIResponsesStreamEventModeEarlyEvent, got.OpenAIResponsesStreamEventMode)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 }

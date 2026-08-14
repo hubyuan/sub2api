@@ -1199,7 +1199,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyStreamEventMode(ctx context.Context,
 		return nil, err
 	}
 	apiKey.OpenAIResponsesStreamEventMode = NormalizeOpenAIResponsesStreamEventMode(mode)
-	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{StreamEventMode: true}); err != nil {
 		return nil, fmt.Errorf("update api key stream event mode: %w", err)
 	}
 	if s.authCacheInvalidator != nil {

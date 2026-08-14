@@ -45,6 +45,13 @@ func (s *openAIResponsesRejectedFieldRetryState) Allow(nextBody []byte) bool {
 	return true
 }
 
+func (s *openAIResponsesRejectedFieldRetryState) AllowReasoningContent(nextBody []byte) bool {
+	if s == nil || s.attempts != 0 {
+		return false
+	}
+	return s.Allow(nextBody)
+}
+
 func (s *openAIResponsesRejectedFieldRetryState) remember(body []byte) {
 	if s == nil || len(body) == 0 {
 		return

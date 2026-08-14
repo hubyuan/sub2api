@@ -174,6 +174,8 @@ type UsageLog struct {
 	OpenAIWSMode bool
 	DurationMs   *int
 	FirstTokenMs *int
+	// FirstSSEEventMs is the latency until the first complete real SSE data event is flushed.
+	FirstSSEEventMs *int
 	UserAgent    *string
 	IPAddress    *string
 	// SessionID is the explicit client-provided request correlation identifier

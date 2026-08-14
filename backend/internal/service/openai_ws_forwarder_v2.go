@@ -350,6 +350,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	var firstSSEEventMs *int
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
@@ -367,6 +368,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	firstEventType := ""
 	lastEventType := ""
 	upstreamTerminalEvent := ""
+	earlyEventMode := openAIResponsesEarlyEventEnabled(c)
+	firstEventReceived := false
 
 	var flusher http.Flusher
 	if reqStream {
@@ -400,6 +403,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			}
 		}
 		flusher.Flush()
+		if firstSSEEventMs == nil && firstEventReceived {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstSSEEventMs = &ms
+		}
 		pendingFlushEvents = 0
 		lastFlushAt = time.Now()
 	}
@@ -527,6 +534,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		responseModelObserver.ObserveOpenAI(message, eventType)
 		eventCount++
+		firstEventReceived = true
 		if firstEventType == "" {
 			firstEventType = eventType
 		}
@@ -662,7 +670,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if reqStream {
 			// 在首个 token 前先缓冲事件（如 response.created），
 			// 以便上游早期断连时仍可安全回退到 HTTP，不给下游发送半截流。
-			shouldBuffer := firstTokenMs == nil && !isTokenEvent && !isTerminalEvent
+			shouldBuffer := openAIWSShouldBufferStreamEvent(earlyEventMode, firstTokenMs != nil, isTokenEvent, isTerminalEvent)
 			if shouldBuffer {
 				buffered := make([]byte, len(message))
 				copy(buffered, message)
@@ -681,7 +689,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				}
 			} else {
 				flushBufferedStreamEvents(eventType)
-				emitStreamMessage(message, isTerminalEvent)
+				emitStreamMessage(message, earlyEventMode || isTokenEvent || isTerminalEvent)
 			}
 		} else {
 			if responseField.Exists() && responseField.Type == gjson.JSON {
@@ -778,7 +786,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ResponseHeaders:               lease.HandshakeHeaders(),
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		FirstSSEEventMs:               firstSSEEventMs,
 	}, nil
+}
+
+func openAIWSShouldBufferStreamEvent(earlyEventMode, semanticOutputStarted, tokenEvent, terminalEvent bool) bool {
+	return !earlyEventMode && !semanticOutputStarted && !tokenEvent && !terminalEvent
 }
 
 // ProxyResponsesWebSocketFromClient 处理客户端入站 WebSocket（OpenAI Responses WS Mode）并转发到上游。

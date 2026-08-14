@@ -251,6 +251,29 @@ func TestOpenAIGatewayServiceReasoningContentRetryFailureReturnsStructured400Onc
 	require.False(t, hasUpstreamStatus)
 }
 
+func TestOpenAIGatewayServiceReasoningContentDoesNotRetryAfterRejectedFieldRetry(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"max_output_tokens":4096,"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep after field retry"}],"summary":[]}]}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"type":"invalid_request_error","code":"unsupported_parameter","param":"max_output_tokens","message":"Unsupported parameter: max_output_tokens"}}`),
+		reasoningContentTestResponse(http.StatusBadRequest, "application/json", reasoningContentArrayErrorBody("input[0].content")),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":99,"output_tokens":99}}`),
+	}}
+	recorder, c := newReasoningContentTestContext(body)
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, newOpenAIRejectedFieldTestAccount(), body,
+	)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Len(t, upstream.bodies, 2, "reasoning compatibility must not add a retry after a rejected-field retry")
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "max_output_tokens").Exists())
+	require.True(t, gjson.GetBytes(upstream.bodies[1], "input.0.content").Exists())
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.True(t, IsResponseCommitted(c))
+	require.Equal(t, "input[0].content", gjson.GetBytes(recorder.Body.Bytes(), "error.param").String())
+}
+
 func TestOpenAIGatewayServiceExactErrorWithUnsafeRequestDoesNotRetry(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":[{"type":"message","content":[{"type":"input_text","text":"keep"}]}]}`)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{

@@ -68,6 +68,153 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=humanwill-runtime-audit
           cache-to: type=gha,mode=max,scope=humanwill-runtime-audit
+      - name: Audit production .4 migration and application rollback compatibility
+        timeout-minutes: 15
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
+          CURRENT_IMAGE: ghcr.io/hubyuan/sub2api@sha256:0511d22c6e705996d594f1eb7ee9a5cd2a9b75a0c748ae1ac40df8429bc845f6
+        run: |
+          set -euo pipefail
+          container=sub2api-upgrade-audit
+          volume=sub2api-upgrade-audit-data
+          mock_pid=""
+          cleanup() {
+            if [ -n "$mock_pid" ] && kill -0 "$mock_pid" 2>/dev/null; then kill "$mock_pid" 2>/dev/null || true; fi
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+            docker exec "$REDIS_CONTAINER" redis-cli -n 10 FLUSHDB >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          wait_for_upgrade_health() {
+            for attempt in $(seq 1 90); do
+              if curl --silent --fail http://127.0.0.1:18081/health >/dev/null; then return; fi
+              if [ "$attempt" -eq 90 ]; then docker logs --tail=100 "$container"; return 1; fi
+              sleep 1
+            done
+          }
+          create_upgrade_container() {
+            local image="$1"
+            local auto_setup="$2"
+            docker create --name "$container" --network host \
+              --cpus 2 --memory 2g --memory-swap 2g --pids-limit 512 \
+              --ulimit nofile=65536:65536 \
+              --volume "$volume":/app/data \
+              -e RUN_MODE=simple -e AUTO_SETUP="$auto_setup" -e DATA_DIR=/app/data \
+              -e SERVER_HOST=127.0.0.1 -e SERVER_PORT=18081 \
+              -e DATABASE_HOST=127.0.0.1 -e DATABASE_PORT=55432 \
+              -e DATABASE_USER=sub2api_upgrade -e DATABASE_PASSWORD=audit-only-upgrade-password \
+              -e DATABASE_DBNAME=sub2api_upgrade -e DATABASE_SSLMODE=disable \
+              -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=56379 -e REDIS_DB=10 \
+              -e ADMIN_EMAIL=upgrade@example.invalid -e ADMIN_PASSWORD=audit-only-admin-password \
+              -e JWT_SECRET=audit-only-upgrade-jwt-secret-at-least-32-characters \
+              "$image" >/dev/null
+          }
+
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE sub2api_upgrade LOGIN PASSWORD 'audit-only-upgrade-password'" >/dev/null
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE sub2api_upgrade OWNER sub2api_upgrade" >/dev/null
+          docker volume create "$volume" >/dev/null
+          docker pull "$CURRENT_IMAGE"
+          python3 tools/mock_openai_upstream.py \
+            --port 19091 --state-file "$RUNNER_TEMP/sub2api-upgrade-mock-state" \
+            >"$RUNNER_TEMP/sub2api-upgrade-mock.log" 2>&1 &
+          mock_pid=$!
+
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:19091/health >/dev/null; then break; fi
+            if [ "$attempt" -eq 30 ]; then cat "$RUNNER_TEMP/sub2api-upgrade-mock.log"; exit 1; fi
+            sleep 1
+          done
+
+          create_upgrade_container "$CURRENT_IMAGE" true
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          docker stop --time 10 "$container" >/dev/null
+          docker rm "$container" >/dev/null
+
+          expected_185_checksum="$(sha256sum backend/migrations/185_add_openai_responses_early_event.sql | awk '{print $1}')"
+          actual_185_checksum="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT checksum FROM schema_migrations WHERE filename = '185_add_openai_responses_early_event.sql'" | tr -d '\r')"
+          test "$actual_185_checksum" = "$expected_185_checksum"
+          seeded_group_id="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT id FROM groups WHERE platform IS DISTINCT FROM 'grok' AND platform IS DISTINCT FROM 'composite' ORDER BY id LIMIT 1" | tr -d '\r')"
+          test -n "$seeded_group_id"
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
+            -c "UPDATE groups SET video_price_480p = 0.12345678, video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb WHERE id = ${seeded_group_id}" >/dev/null
+
+          create_upgrade_container sub2api-humanwill-audit:ci false
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          docker stop --time 10 "$container" >/dev/null
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM schema_migrations WHERE filename = '220_clear_non_grok_video_generation_config.sql'" | tr -d '\r')" = 1
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM groups_video_price_backup_220 WHERE group_id = ${seeded_group_id} AND video_price_480p = 0.12345678 AND video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb" | tr -d '\r')" = 1
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM groups WHERE id = ${seeded_group_id} AND video_price_480p IS NULL AND video_price_720p IS NULL AND video_price_1080p IS NULL AND video_model_prices IS NULL" | tr -d '\r')" = 1
+
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          login_response="$(curl --silent --show-error --fail-with-body \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"upgrade@example.invalid","password":"audit-only-admin-password"}' \
+            http://127.0.0.1:18081/api/v1/auth/login)"
+          admin_token="$(jq -er '.data.access_token' <<<"$login_response")"
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" -H 'Content-Type: application/json' \
+            -d '{"phrase":"I have read, understood, and agree to the Sub2API Deployment and Operation Compliance Commitment","language":"en"}' \
+            http://127.0.0.1:18081/api/v1/admin/compliance/accept \
+            | jq -e '.code == 0 and .data.required == false' >/dev/null
+          groups_response="$(curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" \
+            http://127.0.0.1:18081/api/v1/groups/available)"
+          openai_group_id="$(jq -er 'first(.data[] | select(.platform == "openai")).id' <<<"$groups_response")"
+          account_payload="$(jq -nc --argjson group_id "$openai_group_id" '{name:"upgrade-mock-openai",platform:"openai",type:"apikey",credentials:{api_key:"audit-only-upstream-key",base_url:"http://127.0.0.1:19091/v1"},concurrency:1,priority:1,group_ids:[$group_id]}')"
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" -H 'Content-Type: application/json' \
+            -d "$account_payload" http://127.0.0.1:18081/api/v1/admin/accounts \
+            | jq -e '.code == 0 and .data.id > 0' >/dev/null
+
+          for attempt in $(seq 1 30); do
+            if grep -q '^probe-completed$' "$RUNNER_TEMP/sub2api-upgrade-mock-state"; then break; fi
+            if [ "$attempt" -eq 30 ]; then
+              cat "$RUNNER_TEMP/sub2api-upgrade-mock-state"
+              docker logs --tail=100 "$container"
+              exit 1
+            fi
+            sleep 1
+          done
+          key_payload="$(jq -nc --argjson group_id "$openai_group_id" '{name:"upgrade-audit",custom_key:"sk-audit-only-upgrade-key",group_id:$group_id}')"
+          key_response="$(curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer $admin_token" -H 'Content-Type: application/json' \
+            -d "$key_payload" http://127.0.0.1:18081/api/v1/keys)"
+          application_key="$(jq -er '.data.key' <<<"$key_response")"
+          test "$application_key" = sk-audit-only-upgrade-key
+          docker stop --time 10 "$container" >/dev/null
+          docker rm "$container" >/dev/null
+
+          create_upgrade_container "$CURRENT_IMAGE" false
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          curl --silent --show-error --fail-with-body \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"upgrade@example.invalid","password":"audit-only-admin-password"}' \
+            http://127.0.0.1:18081/api/v1/auth/login \
+            | jq -e '.data.access_token | length > 0' >/dev/null
+          curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
+            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
+            -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
+            http://127.0.0.1:18081/v1/responses \
+            | tee "$RUNNER_TEMP/sub2api-upgrade-old-responses.sse" >/dev/null
+          grep -q 'response.completed' "$RUNNER_TEMP/sub2api-upgrade-old-responses.sse"
+          docker stop --time 10 "$container" >/dev/null
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
+            -c "UPDATE groups g SET video_price_480p = b.video_price_480p, video_price_720p = b.video_price_720p, video_price_1080p = b.video_price_1080p, video_model_prices = b.video_model_prices FROM groups_video_price_backup_220 b WHERE g.id = b.group_id" >/dev/null
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM groups WHERE id = ${seeded_group_id} AND video_price_480p = 0.12345678 AND video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb" | tr -d '\r')" = 1
       - name: Audit isolated simple-mode lifecycle and minimum smoke profile
         id: runtime
         env:
@@ -222,11 +369,13 @@ jobs:
 
           maintenance_schema_absent="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tAc "SELECT to_regclass('public.schema_migrations') IS NULL" | tr -d '\r')"
           migration_count="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_audit -tAc "SELECT COUNT(*) FROM schema_migrations" | tr -d '\r')"
+          migration_220_zero_backup_count="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_audit -tAc "SELECT COUNT(*) FROM groups_video_price_backup_220" | tr -d '\r')"
           redis_sentinel="$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 GET humanwill:audit:sentinel | tr -d '\r')"
           redis_db0_size="$(docker exec "$REDIS_CONTAINER" redis-cli -n 0 DBSIZE | tr -d '\r')"
           redis_db9_size="$(docker exec "$REDIS_CONTAINER" redis-cli -n 9 DBSIZE | tr -d '\r')"
           test "$maintenance_schema_absent" = t
           test "$migration_count" -gt 0
+          test "$migration_220_zero_backup_count" = 0
           test "$redis_sentinel" = untouched
           test "$redis_db0_size" = 1
           test "$redis_db9_size" -gt 0
@@ -317,7 +466,7 @@ jobs:
           echo "Management: $management_summary"
           echo "Authenticated streaming: $streaming_summary"
           echo "Stream-active shutdown: $shutdown_summary"
-          echo "Isolation: maintenance_schema_absent=$maintenance_schema_absent migration_count=$migration_count redis_db0_size=$redis_db0_size redis_db9_size=$redis_db9_size"
+          echo "Isolation: maintenance_schema_absent=$maintenance_schema_absent migration_count=$migration_count migration_220_zero_backup_count=$migration_220_zero_backup_count redis_db0_size=$redis_db0_size redis_db9_size=$redis_db9_size"
           echo "SIGTERM: idle=${idle_stop_ms}ms active=${stream_stop_ms}ms stream_outcome=$stream_outcome curl_status=$stream_curl_status"
           {
             echo '### Low-resource runtime audit'

@@ -75,6 +75,8 @@ type APIKeyUpdateFields struct {
 	RateLimitUsage bool
 	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
 	IPRules bool
+	// StreamEventMode controls the API Key's Responses SSE buffering mode.
+	StreamEventMode bool
 }
 
 // IsEmpty 报告该次 Update 是否不写任何列。
@@ -873,6 +875,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 	if req.OpenAIResponsesStreamEventMode != nil {
 		apiKey.OpenAIResponsesStreamEventMode = NormalizeOpenAIResponsesStreamEventMode(*req.OpenAIResponsesStreamEventMode)
+		fields.StreamEventMode = true
 	}
 
 	// Update rate limit configuration
