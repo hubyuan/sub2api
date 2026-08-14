@@ -46,7 +46,6 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
-		SetOpenaiResponsesStreamEventMode(service.NormalizeOpenAIResponsesStreamEventMode(key.OpenAIResponsesStreamEventMode)).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
@@ -135,7 +134,6 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
-			apikey.FieldOpenaiResponsesStreamEventMode,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -192,7 +190,12 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldVideoPrice480p,
 				group.FieldVideoPrice720p,
 				group.FieldVideoPrice1080p,
+				group.FieldVideoModelPrices,
 				group.FieldWebSearchPricePerCall,
+				group.FieldSearchPricePer1k,
+				group.FieldAudioRealtimePricePerMin,
+				group.FieldAudioTtsPricePerMillionChars,
+				group.FieldAudioSttPricePerHour,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -201,14 +204,23 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldMcpXMLInject,
 				group.FieldSupportedModelScopes,
 				group.FieldAllowMessagesDispatch,
+				group.FieldAllowLive,
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldModelsListConfig,
 				group.FieldRpmLimit,
+				group.FieldMaxReasoningEffort,
+				group.FieldReasoningEffortMappings,
 				group.FieldPeakRateEnabled,
 				group.FieldPeakStart,
 				group.FieldPeakEnd,
 				group.FieldPeakRateMultiplier,
+				// 分组利润控制：认证快照是调度门 enable 判定的直接来源，
+				// 漏选会让门静默失效；新增快照分组字段时必须同步本投影，
+				// 集成测试对账兜底。
+				group.FieldProfitControlEnabled,
+				group.FieldProfitMinMargin,
+				group.FieldProfitSafetyBuffer,
 			)
 		}).
 		Only(ctx)
@@ -221,7 +233,12 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 	return apiKeyEntityToService(m), nil
 }
 
-func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
+func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
+	// 空掩码代表调用方不改任何列，直接返回，避免产生一次无意义的整行写。
+	if fields.IsEmpty() {
+		return nil
+	}
+
 	// 使用原子操作：将软删除检查与更新合并到同一语句，避免竞态条件。
 	// 之前的实现先检查 Exist 再 UpdateOneID，若在两步之间发生软删除，
 	// 则会更新已删除的记录。
@@ -231,58 +248,77 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 	now := time.Now()
 	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
-		SetName(key.Name).
-		SetStatus(key.Status).
-		SetOpenaiResponsesStreamEventMode(service.NormalizeOpenAIResponsesStreamEventMode(key.OpenAIResponsesStreamEventMode)).
-		SetQuota(key.Quota).
-		SetQuotaUsed(key.QuotaUsed).
-		SetRateLimit5h(key.RateLimit5h).
-		SetRateLimit1d(key.RateLimit1d).
-		SetRateLimit7d(key.RateLimit7d).
-		SetUsage5h(key.Usage5h).
-		SetUsage1d(key.Usage1d).
-		SetUsage7d(key.Usage7d).
 		SetUpdatedAt(now)
-	if key.GroupID != nil {
-		builder.SetGroupID(*key.GroupID)
-	} else {
-		builder.ClearGroupID()
+	if fields.Name {
+		builder.SetName(key.Name)
+	}
+	if fields.Status {
+		builder.SetStatus(key.Status)
+	}
+	if fields.Quota {
+		builder.SetQuota(key.Quota)
+	}
+	if fields.QuotaUsed {
+		builder.SetQuotaUsed(key.QuotaUsed)
+	}
+	if fields.RateLimits {
+		builder.
+			SetRateLimit5h(key.RateLimit5h).
+			SetRateLimit1d(key.RateLimit1d).
+			SetRateLimit7d(key.RateLimit7d)
+	}
+	if fields.RateLimitUsage {
+		builder.
+			SetUsage5h(key.Usage5h).
+			SetUsage1d(key.Usage1d).
+			SetUsage7d(key.Usage7d)
+
+		// Rate limit window start times
+		if key.Window5hStart != nil {
+			builder.SetWindow5hStart(*key.Window5hStart)
+		} else {
+			builder.ClearWindow5hStart()
+		}
+		if key.Window1dStart != nil {
+			builder.SetWindow1dStart(*key.Window1dStart)
+		} else {
+			builder.ClearWindow1dStart()
+		}
+		if key.Window7dStart != nil {
+			builder.SetWindow7dStart(*key.Window7dStart)
+		} else {
+			builder.ClearWindow7dStart()
+		}
+	}
+	if fields.GroupID {
+		if key.GroupID != nil {
+			builder.SetGroupID(*key.GroupID)
+		} else {
+			builder.ClearGroupID()
+		}
 	}
 
 	// Expiration time
-	if key.ExpiresAt != nil {
-		builder.SetExpiresAt(*key.ExpiresAt)
-	} else {
-		builder.ClearExpiresAt()
-	}
-
-	// Rate limit window start times
-	if key.Window5hStart != nil {
-		builder.SetWindow5hStart(*key.Window5hStart)
-	} else {
-		builder.ClearWindow5hStart()
-	}
-	if key.Window1dStart != nil {
-		builder.SetWindow1dStart(*key.Window1dStart)
-	} else {
-		builder.ClearWindow1dStart()
-	}
-	if key.Window7dStart != nil {
-		builder.SetWindow7dStart(*key.Window7dStart)
-	} else {
-		builder.ClearWindow7dStart()
+	if fields.ExpiresAt {
+		if key.ExpiresAt != nil {
+			builder.SetExpiresAt(*key.ExpiresAt)
+		} else {
+			builder.ClearExpiresAt()
+		}
 	}
 
 	// IP 限制字段
-	if len(key.IPWhitelist) > 0 {
-		builder.SetIPWhitelist(key.IPWhitelist)
-	} else {
-		builder.ClearIPWhitelist()
-	}
-	if len(key.IPBlacklist) > 0 {
-		builder.SetIPBlacklist(key.IPBlacklist)
-	} else {
-		builder.ClearIPBlacklist()
+	if fields.IPRules {
+		if len(key.IPWhitelist) > 0 {
+			builder.SetIPWhitelist(key.IPWhitelist)
+		} else {
+			builder.ClearIPWhitelist()
+		}
+		if len(key.IPBlacklist) > 0 {
+			builder.SetIPBlacklist(key.IPBlacklist)
+		} else {
+			builder.ClearIPBlacklist()
+		}
 	}
 
 	affected, err := builder.Save(ctx)
@@ -828,30 +864,29 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:                             m.ID,
-		UserID:                         m.UserID,
-		Key:                            m.Key,
-		Name:                           m.Name,
-		Status:                         m.Status,
-		OpenAIResponsesStreamEventMode: service.NormalizeOpenAIResponsesStreamEventMode(m.OpenaiResponsesStreamEventMode),
-		IPWhitelist:                    m.IPWhitelist,
-		IPBlacklist:                    m.IPBlacklist,
-		LastUsedAt:                     m.LastUsedAt,
-		CreatedAt:                      m.CreatedAt,
-		UpdatedAt:                      m.UpdatedAt,
-		GroupID:                        m.GroupID,
-		Quota:                          m.Quota,
-		QuotaUsed:                      m.QuotaUsed,
-		ExpiresAt:                      m.ExpiresAt,
-		RateLimit5h:                    m.RateLimit5h,
-		RateLimit1d:                    m.RateLimit1d,
-		RateLimit7d:                    m.RateLimit7d,
-		Usage5h:                        m.Usage5h,
-		Usage1d:                        m.Usage1d,
-		Usage7d:                        m.Usage7d,
-		Window5hStart:                  m.Window5hStart,
-		Window1dStart:                  m.Window1dStart,
-		Window7dStart:                  m.Window7dStart,
+		ID:            m.ID,
+		UserID:        m.UserID,
+		Key:           m.Key,
+		Name:          m.Name,
+		Status:        m.Status,
+		IPWhitelist:   m.IPWhitelist,
+		IPBlacklist:   m.IPBlacklist,
+		LastUsedAt:    m.LastUsedAt,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
+		GroupID:       m.GroupID,
+		Quota:         m.Quota,
+		QuotaUsed:     m.QuotaUsed,
+		ExpiresAt:     m.ExpiresAt,
+		RateLimit5h:   m.RateLimit5h,
+		RateLimit1d:   m.RateLimit1d,
+		RateLimit7d:   m.RateLimit7d,
+		Usage5h:       m.Usage5h,
+		Usage1d:       m.Usage1d,
+		Usage7d:       m.Usage7d,
+		Window5hStart: m.Window5hStart,
+		Window1dStart: m.Window1dStart,
+		Window7dStart: m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -939,7 +974,12 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		VideoPrice480P:                  g.VideoPrice480p,
 		VideoPrice720P:                  g.VideoPrice720p,
 		VideoPrice1080P:                 g.VideoPrice1080p,
+		VideoModelPrices:                service.NormalizeVideoModelPrices(g.VideoModelPrices),
 		WebSearchPricePerCall:           g.WebSearchPricePerCall,
+		SearchPricePer1k:                g.SearchPricePer1k,
+		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    g.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            g.AudioSttPricePerHour,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
@@ -950,16 +990,22 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
+		AllowLive:                       g.AllowLive,
 		RequireOAuthOnly:                g.RequireOauthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelsListConfig:                g.ModelsListConfig,
 		RPMLimit:                        g.RpmLimit,
+		MaxReasoningEffort:              g.MaxReasoningEffort,
+		ReasoningEffortMappings:         g.ReasoningEffortMappings,
 		PeakRateEnabled:                 g.PeakRateEnabled,
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
+		ProfitControlEnabled:            g.ProfitControlEnabled,
+		ProfitMinMargin:                 g.ProfitMinMargin,
+		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
