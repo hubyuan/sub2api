@@ -122,6 +122,7 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:${{ steps.validate.outputs.version }}
           build-args: |
+            GOLANG_IMAGE=golang:1.26.6-alpine
             VERSION=${{ steps.validate.outputs.version }}
             COMMIT=${{ steps.validate.outputs.source_sha }}
           labels: |

@@ -28,6 +28,7 @@ required = {
     "successful conclusion requirement": '.conclusion == "success"',
     "existing version rejection": "already exists; refusing to overwrite",
     "amd64-only build": "platforms: linux/amd64",
+    "required Go builder override": "GOLANG_IMAGE=golang:1.26.6-alpine",
     "version-only image tag": "tags: ${{ env.IMAGE }}:${{ steps.validate.outputs.version }}",
     "OCI source label": "org.opencontainers.image.source=https://github.com/hubyuan/sub2api",
     "OCI revision label": "org.opencontainers.image.revision=${{ steps.validate.outputs.source_sha }}",
