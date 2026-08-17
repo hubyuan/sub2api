@@ -549,14 +549,6 @@
           />
         </div>
 
-        <div>
-          <label class="input-label">{{ t('keys.responsesStreamEventMode') }}</label>
-          <Select
-            v-model="formData.openai_responses_stream_event_mode"
-            :options="streamEventModeOptions"
-          />
-        </div>
-
         <!-- IP Restriction Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1339,7 +1331,6 @@ const formData = ref({
   name: '',
   group_id: null as number | null,
   status: 'active' as 'active' | 'inactive',
-  openai_responses_stream_event_mode: 'strict' as 'strict' | 'early_event',
   use_custom_key: false,
   custom_key: '',
   enable_ip_restriction: false,
@@ -1377,11 +1368,6 @@ const customKeyError = computed(() => {
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
   { value: 'inactive', label: t('common.inactive') }
-])
-
-const streamEventModeOptions = computed(() => [
-  { value: 'strict', label: t('keys.responsesStreamEventModeStrict') },
-  { value: 'early_event', label: t('keys.responsesStreamEventModeEarly') }
 ])
 
 const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
@@ -1579,7 +1565,6 @@ const editKey = (key: ApiKey) => {
     name: key.name,
     group_id: key.group_id,
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
-    openai_responses_stream_event_mode: key.openai_responses_stream_event_mode === 'early_event' ? 'early_event' : 'strict',
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: hasIPRestriction,
@@ -1743,7 +1728,6 @@ const handleSubmit = async () => {
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
-        openai_responses_stream_event_mode: formData.value.openai_responses_stream_event_mode,
       }
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
@@ -1760,8 +1744,7 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData,
-        formData.value.openai_responses_stream_event_mode
+        rateLimitData
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1808,7 +1791,6 @@ const closeModals = () => {
     name: '',
     group_id: null,
     status: 'active',
-    openai_responses_stream_event_mode: 'strict',
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: false,

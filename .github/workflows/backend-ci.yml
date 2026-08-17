@@ -14,8 +14,10 @@ jobs:
       - uses: actions/checkout@v6
       - name: Check immutable release and application-only Compose
         run: |
-          python3 -m py_compile tools/check_humanwill_release.py tools/mock_openai_upstream.py tools/container_resource_sampler.py
+          git fetch --no-tags https://github.com/Wei-Shaw/sub2api.git 073e92d17178a1ccdb0a27017f572f10c9c7ab62
+          python3 -m py_compile tools/check_humanwill_release.py tools/check_upstream_provenance.py tools/mock_openai_upstream.py tools/container_resource_sampler.py
           python3 tools/check_humanwill_release.py
+          python3 tools/check_upstream_provenance.py
           docker compose -f deploy/docker-compose.humanwill.example.yml config --no-interpolate >/dev/null
 
   low-resource-runtime:
@@ -68,12 +70,12 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=humanwill-runtime-audit
           cache-to: type=gha,mode=max,scope=humanwill-runtime-audit
-      - name: Audit production .4 migration and application rollback compatibility
+      - name: Audit production-shape migration and application rollback compatibility
         timeout-minutes: 15
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           REDIS_CONTAINER: ${{ job.services.redis.id }}
-          CURRENT_IMAGE: ghcr.io/hubyuan/sub2api@sha256:0511d22c6e705996d594f1eb7ee9a5cd2a9b75a0c748ae1ac40df8429bc845f6
+          CURRENT_IMAGE: ghcr.io/hubyuan/sub2api@sha256:dcf36d1d00db16355e85ba1c50163bc02f6054bfef9bcc59fa876c34d5f0aa73
         run: |
           set -euo pipefail
           container=sub2api-upgrade-audit
@@ -102,6 +104,7 @@ jobs:
               --ulimit nofile=65536:65536 \
               --volume "$volume":/app/data \
               -e RUN_MODE=simple -e AUTO_SETUP="$auto_setup" -e DATA_DIR=/app/data \
+              -e TZ=America/New_York \
               -e SERVER_HOST=127.0.0.1 -e SERVER_PORT=18081 \
               -e DATABASE_HOST=127.0.0.1 -e DATABASE_PORT=55432 \
               -e DATABASE_USER=sub2api_upgrade -e DATABASE_PASSWORD=audit-only-upgrade-password \
@@ -135,38 +138,40 @@ jobs:
           docker stop --time 10 "$container" >/dev/null
           docker rm "$container" >/dev/null
 
-          expected_185_checksum="$(python3 -c 'import hashlib, pathlib; print(hashlib.sha256(pathlib.Path("backend/migrations/185_add_openai_responses_early_event.sql").read_text().strip().encode()).hexdigest())')"
           actual_185_checksum="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
             "SELECT checksum FROM schema_migrations WHERE filename = '185_add_openai_responses_early_event.sql'" | tr -d '\r')"
-          test "$actual_185_checksum" = "$expected_185_checksum"
-          seeded_group_id="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT id FROM groups WHERE platform IS DISTINCT FROM 'grok' AND platform IS DISTINCT FROM 'composite' ORDER BY id LIMIT 1" | tr -d '\r')"
-          test -n "$seeded_group_id"
-
-          # Let migration 217 create the final price column before seeding nonzero data for migration 220.
-          expected_220_checksum="$(python3 -c 'import hashlib, pathlib; print(hashlib.sha256(pathlib.Path("backend/migrations/220_clear_non_grok_video_generation_config.sql").read_text().strip().encode()).hexdigest())')"
-          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
-            -c "INSERT INTO schema_migrations (filename, checksum) VALUES ('220_clear_non_grok_video_generation_config.sql', '$expected_220_checksum')" >/dev/null
+          actual_220_checksum="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT checksum FROM schema_migrations WHERE filename = '220_clear_non_grok_video_generation_config.sql'" | tr -d '\r')"
+          test "$actual_185_checksum" = f27a4a07e9692c9c0659797e0fb9b7e0c221959284bd27fd097b6c6b5f05bc0f
+          test "$actual_220_checksum" = 4595baeb0dab0fd05be15da4e8f0dcf9f8e7d0ca36d60d00d223fca9bef03625
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM schema_migrations WHERE filename IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql')" | tr -d '\r')" = 0
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -At \
+            -c "SELECT filename || E'\\t' || checksum FROM schema_migrations ORDER BY filename" \
+            >"$RUNNER_TEMP/sub2api-upgrade-prior-migrations.tsv"
+          prior_migration_count="$(wc -l < "$RUNNER_TEMP/sub2api-upgrade-prior-migrations.tsv")"
 
           create_upgrade_container sub2api-humanwill-audit:ci false
           docker start "$container" >/dev/null
           wait_for_upgrade_health
           docker stop --time 10 "$container" >/dev/null
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM schema_migrations WHERE filename = '217_group_video_model_prices.sql'" | tr -d '\r')" = 1
-          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
-            -c "DELETE FROM schema_migrations WHERE filename = '220_clear_non_grok_video_generation_config.sql'" \
-            -c "UPDATE groups SET video_price_480p = 0.12345678, video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb WHERE id = ${seeded_group_id}" >/dev/null
+            "SELECT COUNT(*) FROM schema_migrations WHERE filename IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql')" | tr -d '\r')" = 3
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'groups' AND column_name IN ('long_context_pricing_enabled', 'model_pricing')" | tr -d '\r')" = 2
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('usage_group_daily_rollups', 'usage_group_rollup_state')" | tr -d '\r')" = 2
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -At \
+            -c "SELECT filename || E'\\t' || checksum FROM schema_migrations WHERE filename NOT IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql') ORDER BY filename" \
+            >"$RUNNER_TEMP/sub2api-upgrade-after-migrations.tsv"
+          cmp "$RUNNER_TEMP/sub2api-upgrade-prior-migrations.tsv" "$RUNNER_TEMP/sub2api-upgrade-after-migrations.tsv"
 
+          # A second startup must be idempotent and retain every migration row.
           docker start "$container" >/dev/null
           wait_for_upgrade_health
           docker stop --time 10 "$container" >/dev/null
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM schema_migrations WHERE filename = '220_clear_non_grok_video_generation_config.sql'" | tr -d '\r')" = 1
-          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM groups_video_price_backup_220 WHERE group_id = ${seeded_group_id} AND video_price_480p = 0.12345678 AND video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb" | tr -d '\r')" = 1
-          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM groups WHERE id = ${seeded_group_id} AND video_price_480p IS NULL AND video_price_720p IS NULL AND video_price_1080p IS NULL AND video_model_prices IS NULL" | tr -d '\r')" = 1
+            "SELECT COUNT(*) FROM schema_migrations" | tr -d '\r')" = "$((prior_migration_count + 3))"
 
           docker start "$container" >/dev/null
           wait_for_upgrade_health
@@ -205,6 +210,43 @@ jobs:
             -d "$key_payload" http://127.0.0.1:18081/api/v1/keys)"
           application_key="$(jq -er '.data.key' <<<"$key_response")"
           test "$application_key" = sk-audit-only-upgrade-key
+          curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
+            -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
+            -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
+            http://127.0.0.1:18081/v1/responses \
+            | tee "$RUNNER_TEMP/sub2api-upgrade-new-responses.sse" >/dev/null
+          grep -q 'response.completed' "$RUNNER_TEMP/sub2api-upgrade-new-responses.sse"
+          for attempt in $(seq 1 30); do
+            usage_log_id="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+              "SELECT id FROM usage_logs WHERE group_id = ${openai_group_id} ORDER BY id DESC LIMIT 1" | tr -d '\r')"
+            if [ -n "$usage_log_id" ]; then break; fi
+            test "$attempt" -ne 30
+            sleep 1
+          done
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
+            -c "UPDATE usage_logs SET actual_cost = 3, created_at = ((((CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date - 2)::timestamp + TIME '00:30') AT TIME ZONE 'America/New_York') WHERE id = ${usage_log_id}" >/dev/null
+          docker stop --time 10 "$container" >/dev/null
+
+          # Startup aggregation must rebuild historical buckets in configured TZ and publish the watermark last.
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          for attempt in $(seq 1 60); do
+            rollup_ready="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+              "SELECT EXISTS (SELECT 1 FROM usage_group_daily_rollups WHERE bucket_date = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date - 2 AND group_id = ${openai_group_id} AND actual_cost = 3)" | tr -d '\r')"
+            if [ "$rollup_ready" = t ]; then break; fi
+            if [ "$attempt" -eq 60 ]; then docker logs --tail=100 "$container"; exit 1; fi
+            sleep 1
+          done
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT timezone_name = 'America/New_York' AND closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date FROM usage_group_rollup_state WHERE id = 1" | tr -d '\r')" = t
+          rollup_snapshot="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -Atc \
+            "SELECT bucket_date, group_id, actual_cost FROM usage_group_daily_rollups ORDER BY bucket_date, group_id")"
+          docker stop --time 10 "$container" >/dev/null
+          docker start "$container" >/dev/null
+          wait_for_upgrade_health
+          sleep 5
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -Atc \
+            "SELECT bucket_date, group_id, actual_cost FROM usage_group_daily_rollups ORDER BY bucket_date, group_id")" = "$rollup_snapshot"
           docker stop --time 10 "$container" >/dev/null
           docker rm "$container" >/dev/null
 
@@ -217,26 +259,37 @@ jobs:
             -d '{"email":"upgrade@example.invalid","password":"audit-only-admin-password"}' \
             http://127.0.0.1:18081/api/v1/auth/login || true)"
           if [ "$old_login_status" != 200 ] || ! jq -e '.data.access_token | strings | length > 0' "$old_login_response" >/dev/null; then
-            echo "Production .4 rollback login failed: status=$old_login_status" >&2
+            echo "Rollback image login failed: status=$old_login_status" >&2
             if jq -e . "$old_login_response" >/dev/null 2>&1; then
               jq -c '{code, message, error: (if (.error | type) == "object" then {type: .error.type, code: .error.code, message: .error.message} else .error end)}' "$old_login_response" >&2
             else
-              echo "Production .4 rollback login returned non-JSON: bytes=$(wc -c < "$old_login_response")" >&2
+              echo "Rollback image login returned non-JSON: bytes=$(wc -c < "$old_login_response")" >&2
             fi
             docker logs --tail=100 "$container" >&2 || true
             exit 1
           fi
+          usage_count_before="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM usage_logs" | tr -d '\r')"
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
+            -c "UPDATE usage_group_rollup_state SET closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date + 1 WHERE id = 1" >/dev/null
           curl --silent --show-error --fail-with-body --no-buffer --max-time 30 \
             -H "Authorization: Bearer $application_key" -H 'Content-Type: application/json' \
             -d '{"model":"gpt-5.4","input":"AUDIT_FAST_STREAM","stream":true}' \
             http://127.0.0.1:18081/v1/responses \
             | tee "$RUNNER_TEMP/sub2api-upgrade-old-responses.sse" >/dev/null
           grep -q 'response.completed' "$RUNNER_TEMP/sub2api-upgrade-old-responses.sse"
-          docker stop --time 10 "$container" >/dev/null
-          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -v ON_ERROR_STOP=1 \
-            -c "UPDATE groups g SET video_price_480p = b.video_price_480p, video_price_720p = b.video_price_720p, video_price_1080p = b.video_price_1080p, video_model_prices = b.video_model_prices FROM groups_video_price_backup_220 b WHERE g.id = b.group_id" >/dev/null
+          for attempt in $(seq 1 30); do
+            usage_count_after="$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+              "SELECT COUNT(*) FROM usage_logs" | tr -d '\r')"
+            if [ "$usage_count_after" -gt "$usage_count_before" ]; then break; fi
+            test "$attempt" -ne 30
+            sleep 1
+          done
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM groups WHERE id = ${seeded_group_id} AND video_price_480p = 0.12345678 AND video_model_prices = '{\"audit\":{\"720p\":0.87654321}}'::jsonb" | tr -d '\r')" = 1
+            "SELECT COUNT(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('usage_logs_group_rollup_invalidate_insert', 'usage_logs_group_rollup_invalidate_delete', 'usage_logs_group_rollup_invalidate_update')" | tr -d '\r')" = 3
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date FROM usage_group_rollup_state WHERE id = 1" | tr -d '\r')" = t
+          docker stop --time 10 "$container" >/dev/null
       - name: Audit isolated simple-mode lifecycle and minimum smoke profile
         id: runtime
         env:
@@ -556,8 +609,13 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Frontend typecheck and critical vitest
-        run: make test-frontend
+      - name: Frontend lint, typecheck, tests, and build
+        working-directory: frontend
+        run: |
+          pnpm run lint:check
+          pnpm run typecheck
+          pnpm run test:run
+          pnpm run build
 
   golangci-lint:
     runs-on: ubuntu-latest

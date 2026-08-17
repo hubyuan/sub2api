@@ -198,18 +198,3 @@ func TestAPIKeyService_Update_ReactivatesQuotaExhaustedWhenQuotaUnlimited(t *tes
 	require.Equal(t, StatusActive, repo.updatedKeys[0].Status)
 	require.Equal(t, 0.0, repo.updatedKeys[0].Quota)
 }
-
-func TestAPIKeyService_UpdateNormalizesResponsesStreamEventMode(t *testing.T) {
-	repo := &apiKeyRepoStub{apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-test-mode", Status: StatusActive}}
-	svc := &APIKeyService{apiKeyRepo: repo}
-
-	early := OpenAIResponsesStreamEventModeEarlyEvent
-	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{OpenAIResponsesStreamEventMode: &early})
-	require.NoError(t, err)
-	require.Equal(t, OpenAIResponsesStreamEventModeEarlyEvent, updated.OpenAIResponsesStreamEventMode)
-
-	unknown := "fast"
-	updated, err = svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{OpenAIResponsesStreamEventMode: &unknown})
-	require.NoError(t, err)
-	require.Equal(t, OpenAIResponsesStreamEventModeStrict, updated.OpenAIResponsesStreamEventMode)
-}

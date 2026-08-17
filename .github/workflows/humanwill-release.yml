@@ -17,6 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -57,6 +58,31 @@ jobs:
           fi
           echo "source_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful post-merge CI and security
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.validate.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&status=completed&per_page=100")"
+          for workflow in 'CI' 'Security Scan'; do
+            count="$(jq --arg workflow "$workflow" --arg sha "$SOURCE_SHA" \
+              '[.workflow_runs[] | select(
+                .name == $workflow and
+                .head_sha == $sha and
+                .head_branch == "main" and
+                .event == "push" and
+                .conclusion == "success"
+              )] | length' <<<"$runs")"
+            if [ "$count" -lt 1 ]; then
+              echo "No successful post-merge ${workflow} push run found for ${SOURCE_SHA}" >&2
+              exit 1
+            fi
+          done
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

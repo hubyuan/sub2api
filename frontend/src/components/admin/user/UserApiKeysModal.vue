@@ -43,18 +43,6 @@
               </button>
             </div>
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
-            <label class="flex items-center gap-1">
-              <span>{{ t('keys.responsesStreamEventMode') }}:</span>
-              <select
-                class="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs dark:border-dark-600 dark:bg-dark-700"
-                :value="key.openai_responses_stream_event_mode === 'early_event' ? 'early_event' : 'strict'"
-                :disabled="updatingKeyIds.has(key.id)"
-                @change="changeStreamEventMode(key, ($event.target as HTMLSelectElement).value as 'strict' | 'early_event')"
-              >
-                <option value="strict">{{ t('keys.responsesStreamEventModeStrict') }}</option>
-                <option value="early_event">{{ t('keys.responsesStreamEventModeEarly') }}</option>
-              </select>
-            </label>
           </div>
         </div>
       </div>
@@ -233,20 +221,6 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
     }
   } catch (error: any) {
     appStore.showError(error?.message || t('admin.users.groupChangeFailed'))
-  } finally {
-    updatingKeyIds.value.delete(key.id)
-  }
-}
-
-const changeStreamEventMode = async (key: ApiKey, mode: 'strict' | 'early_event') => {
-  if ((key.openai_responses_stream_event_mode || 'strict') === mode) return
-  updatingKeyIds.value.add(key.id)
-  try {
-    const result = await adminAPI.apiKeys.updateApiKeyStreamEventMode(key.id, mode)
-    const idx = apiKeys.value.findIndex((item) => item.id === key.id)
-    if (idx !== -1) apiKeys.value[idx] = result.api_key
-  } catch (error: any) {
-    appStore.showError(error?.message || t('common.error'))
   } finally {
     updatingKeyIds.value.delete(key.id)
   }

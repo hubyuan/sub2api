@@ -558,6 +558,7 @@ export interface Group {
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  long_context_pricing_enabled: boolean
   // 图片生成计费配置
   allow_image_generation: boolean
   allow_batch_image_generation: boolean
@@ -604,6 +605,7 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
   // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
   // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
   profit_control_enabled: boolean
@@ -713,7 +715,6 @@ export interface ApiKey {
   created_at: string
   updated_at: string
   current_concurrency: number
-  openai_responses_stream_event_mode: OpenAIResponsesStreamEventMode
   group?: Group
   rate_limit_5h: number
   rate_limit_1d: number
@@ -729,8 +730,6 @@ export interface ApiKey {
   reset_7d_at: string | null
 }
 
-export type OpenAIResponsesStreamEventMode = 'strict' | 'early_event'
-
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
@@ -742,7 +741,6 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
-  openai_responses_stream_event_mode?: OpenAIResponsesStreamEventMode
 }
 
 export interface UpdateApiKeyRequest {
@@ -758,7 +756,6 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
-  openai_responses_stream_event_mode?: OpenAIResponsesStreamEventMode
 }
 
 export interface CreateGroupRequest {
@@ -771,6 +768,8 @@ export interface CreateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  long_context_pricing_enabled?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
@@ -831,6 +830,8 @@ export interface UpdateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  long_context_pricing_enabled?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
@@ -1652,7 +1653,6 @@ export interface UsageLog {
   openai_ws_mode?: boolean
   duration_ms: number | null
   first_token_ms: number | null
-  first_sse_event_ms: number | null
 
   // 图片生成字段
   image_count: number

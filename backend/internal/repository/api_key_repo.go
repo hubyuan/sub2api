@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -46,7 +48,6 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
-		SetOpenaiResponsesStreamEventMode(service.NormalizeOpenAIResponsesStreamEventMode(key.OpenAIResponsesStreamEventMode)).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
@@ -135,7 +136,6 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
-			apikey.FieldOpenaiResponsesStreamEventMode,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -198,6 +198,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldAudioRealtimePricePerMin,
 				group.FieldAudioTtsPricePerMillionChars,
 				group.FieldAudioSttPricePerHour,
+				group.FieldLongContextPricingEnabled,
+				group.FieldModelPricing,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -256,9 +258,6 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.Status {
 		builder.SetStatus(key.Status)
-	}
-	if fields.StreamEventMode {
-		builder.SetOpenaiResponsesStreamEventMode(service.NormalizeOpenAIResponsesStreamEventMode(key.OpenAIResponsesStreamEventMode))
 	}
 	if fields.Quota {
 		builder.SetQuota(key.Quota)
@@ -869,30 +868,29 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:                             m.ID,
-		UserID:                         m.UserID,
-		Key:                            m.Key,
-		Name:                           m.Name,
-		Status:                         m.Status,
-		OpenAIResponsesStreamEventMode: service.NormalizeOpenAIResponsesStreamEventMode(m.OpenaiResponsesStreamEventMode),
-		IPWhitelist:                    m.IPWhitelist,
-		IPBlacklist:                    m.IPBlacklist,
-		LastUsedAt:                     m.LastUsedAt,
-		CreatedAt:                      m.CreatedAt,
-		UpdatedAt:                      m.UpdatedAt,
-		GroupID:                        m.GroupID,
-		Quota:                          m.Quota,
-		QuotaUsed:                      m.QuotaUsed,
-		ExpiresAt:                      m.ExpiresAt,
-		RateLimit5h:                    m.RateLimit5h,
-		RateLimit1d:                    m.RateLimit1d,
-		RateLimit7d:                    m.RateLimit7d,
-		Usage5h:                        m.Usage5h,
-		Usage1d:                        m.Usage1d,
-		Usage7d:                        m.Usage7d,
-		Window5hStart:                  m.Window5hStart,
-		Window1dStart:                  m.Window1dStart,
-		Window7dStart:                  m.Window7dStart,
+		ID:            m.ID,
+		UserID:        m.UserID,
+		Key:           m.Key,
+		Name:          m.Name,
+		Status:        m.Status,
+		IPWhitelist:   m.IPWhitelist,
+		IPBlacklist:   m.IPBlacklist,
+		LastUsedAt:    m.LastUsedAt,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
+		GroupID:       m.GroupID,
+		Quota:         m.Quota,
+		QuotaUsed:     m.QuotaUsed,
+		ExpiresAt:     m.ExpiresAt,
+		RateLimit5h:   m.RateLimit5h,
+		RateLimit1d:   m.RateLimit1d,
+		RateLimit7d:   m.RateLimit7d,
+		Usage5h:       m.Usage5h,
+		Usage1d:       m.Usage1d,
+		Usage7d:       m.Usage7d,
+		Window5hStart: m.Window5hStart,
+		Window1dStart: m.Window1dStart,
+		Window7dStart: m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -952,6 +950,14 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
 	}
+	var modelPricing []service.ChannelModelPricing
+	if len(g.ModelPricing) > 0 {
+		if err := json.Unmarshal(g.ModelPricing, &modelPricing); err != nil {
+			slog.Warn("group model_pricing unmarshal failed; falling back to channel/builtin pricing",
+				"group_id", g.ID, "error", err)
+			modelPricing = nil
+		}
+	}
 	return &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -986,6 +992,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars:    g.AudioTtsPricePerMillionChars,
 		AudioSTTPricePerHour:            g.AudioSttPricePerHour,
+		LongContextPricingEnabled:       g.LongContextPricingEnabled,
+		ModelPricing:                    modelPricing,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,

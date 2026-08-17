@@ -264,7 +264,6 @@ type OpenAIForwardResult struct {
 	ResponseHeaders       http.Header
 	Duration              time.Duration
 	FirstTokenMs          *int
-	FirstSSEEventMs       *int
 	ClientDisconnect      bool
 	ImageCount            int
 	ImageSize             string
@@ -287,29 +286,6 @@ type OpenAIForwardResult struct {
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
-	// suppressScheduleResult is set for deterministic upstream terminal errors
-	// (for example context or policy rejection) that must not affect account health.
-	suppressScheduleResult bool
-}
-
-type openAIResponseFailedError struct {
-	message                      string
-	reportAccountScheduleFailure bool
-}
-
-func (e *openAIResponseFailedError) Error() string {
-	return e.message
-}
-
-func (e *openAIResponseFailedError) ShouldReportAccountScheduleFailure() bool {
-	return e != nil && e.reportAccountScheduleFailure
-}
-
-func newOpenAIResponseFailedError(message string, reportAccountScheduleFailure bool) error {
-	return &openAIResponseFailedError{
-		message:                      message,
-		reportAccountScheduleFailure: reportAccountScheduleFailure,
-	}
 }
 
 // SucceededForScheduling reports whether this result is an upstream success
@@ -319,13 +295,12 @@ func (r *OpenAIForwardResult) SucceededForScheduling() bool {
 	if r == nil || !r.OpenAIWSMode || r.UpstreamTerminalEvent == "" {
 		return true
 	}
-	return openAIWSTerminalEventSucceeded(r.UpstreamTerminalEvent)
-}
-
-// ShouldReportSchedulingResult excludes deterministic request-level terminal
-// failures from scheduler health feedback.
-func (r *OpenAIForwardResult) ShouldReportSchedulingResult() bool {
-	return r == nil || !r.suppressScheduleResult
+	switch r.UpstreamTerminalEvent {
+	case "response.completed", "response.done":
+		return true
+	default:
+		return false
+	}
 }
 
 // SetActualOpenAIUpstreamEndpoint records the endpoint selected by the current
@@ -423,8 +398,8 @@ func (t *accountWriteThrottle) Allow(id int64, now time.Time) bool {
 
 var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
 
-// ErrNoAvailableCompactAccounts indicates the request needs /responses/compact
-// support but no compatible account is available.
+// ErrNoAvailableCompactAccounts indicates a legacy /responses/compact request
+// needs compact support but no compatible account is available.
 var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /responses/compact")
 
 // OpenAIGatewayService handles OpenAI API gateway operations
@@ -487,6 +462,11 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
+	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
+	// 剥离跨账号回带（openai_codex_turn_state.go）。
+	openaiCodexTurnStateOrigins sync.Map
+	openaiCodexTurnStateWrites  atomic.Uint64
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -622,6 +602,10 @@ func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Contex
 func (s *OpenAIGatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string, requireCompact bool) bool {
 	if s.channelService == nil {
 		return false
+	}
+	if compactForwardModel, ok := openAIForwardModelFromContext(ctx); ok {
+		requestedModel = compactForwardModel.model
+		requireCompact = compactForwardModel.useCompactModelMapping
 	}
 	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
 	if upstreamModel == "" {

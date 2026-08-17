@@ -1159,37 +1159,6 @@ func TestResponsesEventToChatChunks_ToolCallDelta(t *testing.T) {
 	assert.Equal(t, 0, *tc.Index, "first tool arg delta must still use index 0")
 }
 
-func TestResponsesEventToChatChunks_KnownRisk_OutputItemDoneDoesNotBackfillLateToolName(t *testing.T) {
-	state := NewResponsesEventToChatState()
-	state.Model = "gpt-4o"
-	state.SentRole = true
-
-	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
-		Type:        "response.output_item.added",
-		OutputIndex: 0,
-		Item: &ResponsesOutput{
-			Type:   "function_call",
-			CallID: "call_late_name",
-		},
-	}, state)
-	require.Len(t, chunks, 1)
-	require.Len(t, chunks[0].Choices[0].Delta.ToolCalls, 1)
-	assert.Empty(t, chunks[0].Choices[0].Delta.ToolCalls[0].Function.Name)
-
-	// Known v0.1.175 risk: output_item.done is ignored, so a tool name that
-	// arrives only in the terminal item cannot be recovered by Chat clients.
-	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
-		Type:        "response.output_item.done",
-		OutputIndex: 0,
-		Item: &ResponsesOutput{
-			Type:   "function_call",
-			CallID: "call_late_name",
-			Name:   "get_weather",
-		},
-	}, state)
-	assert.Empty(t, chunks)
-}
-
 func TestResponsesEventToChatChunks_Completed(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"
