@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -25,9 +24,8 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
 type AdminUpdateAPIKeyGroupRequest struct {
-	GroupID                        *int64  `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
-	ResetRateLimitUsage            *bool   `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
-	OpenAIResponsesStreamEventMode *string `json:"openai_responses_stream_event_mode"`
+	GroupID             *int64 `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
+	ResetRateLimitUsage *bool  `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
 }
 
 // UpdateGroup handles updating an API key's admin-managed fields.
@@ -61,21 +59,6 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 	}
 	if resetKey != nil && req.GroupID == nil {
 		result.APIKey = resetKey
-	}
-	if req.OpenAIResponsesStreamEventMode != nil {
-		updater, ok := h.adminService.(interface {
-			AdminUpdateAPIKeyStreamEventMode(ctx context.Context, keyID int64, mode string) (*service.APIKey, error)
-		})
-		if !ok {
-			response.InternalError(c, "API key stream event mode update is unavailable")
-			return
-		}
-		updatedKey, updateErr := updater.AdminUpdateAPIKeyStreamEventMode(c.Request.Context(), keyID, *req.OpenAIResponsesStreamEventMode)
-		if updateErr != nil {
-			response.ErrorFrom(c, updateErr)
-			return
-		}
-		result.APIKey = updatedKey
 	}
 
 	resp := struct {

@@ -229,7 +229,6 @@ func TestAPIContracts(t *testing.T) {
 					"user_id": 1,
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
-					"openai_responses_stream_event_mode": "strict",
 					"group_id": null,
 					"status": "active",
 					"ip_whitelist": null,
@@ -281,7 +280,6 @@ func TestAPIContracts(t *testing.T) {
 							"user_id": 1,
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
-							"openai_responses_stream_event_mode": "strict",
 							"group_id": null,
 							"status": "active",
 							"ip_whitelist": null,
@@ -366,6 +364,7 @@ func TestAPIContracts(t *testing.T) {
 						"daily_limit_usd": null,
 						"weekly_limit_usd": null,
 						"monthly_limit_usd": null,
+						"long_context_pricing_enabled": false,
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
@@ -611,7 +610,6 @@ func TestAPIContracts(t *testing.T) {
 						"billing_type": 0,
 							"stream": true,
 							"duration_ms": 100,
-							"first_sse_event_ms": null,
 							"first_token_ms": 50,
 							"image_count": 0,
 							"image_size": null,
@@ -1470,7 +1468,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)

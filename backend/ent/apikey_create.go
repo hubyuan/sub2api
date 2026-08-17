@@ -113,20 +113,6 @@ func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	return _c
 }
 
-// SetOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field.
-func (_c *APIKeyCreate) SetOpenaiResponsesStreamEventMode(v string) *APIKeyCreate {
-	_c.mutation.SetOpenaiResponsesStreamEventMode(v)
-	return _c
-}
-
-// SetNillableOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field if the given value is not nil.
-func (_c *APIKeyCreate) SetNillableOpenaiResponsesStreamEventMode(v *string) *APIKeyCreate {
-	if v != nil {
-		_c.SetOpenaiResponsesStreamEventMode(*v)
-	}
-	return _c
-}
-
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -401,10 +387,6 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
-	if _, ok := _c.mutation.OpenaiResponsesStreamEventMode(); !ok {
-		v := apikey.DefaultOpenaiResponsesStreamEventMode
-		_c.mutation.SetOpenaiResponsesStreamEventMode(v)
-	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -473,14 +455,6 @@ func (_c *APIKeyCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.OpenaiResponsesStreamEventMode(); !ok {
-		return &ValidationError{Name: "openai_responses_stream_event_mode", err: errors.New(`ent: missing required field "APIKey.openai_responses_stream_event_mode"`)}
-	}
-	if v, ok := _c.mutation.OpenaiResponsesStreamEventMode(); ok {
-		if err := apikey.OpenaiResponsesStreamEventModeValidator(v); err != nil {
-			return &ValidationError{Name: "openai_responses_stream_event_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.openai_responses_stream_event_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
@@ -560,10 +534,6 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
-	}
-	if value, ok := _c.mutation.OpenaiResponsesStreamEventMode(); ok {
-		_spec.SetField(apikey.FieldOpenaiResponsesStreamEventMode, field.TypeString, value)
-		_node.OpenaiResponsesStreamEventMode = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -820,18 +790,6 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
-	return u
-}
-
-// SetOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field.
-func (u *APIKeyUpsert) SetOpenaiResponsesStreamEventMode(v string) *APIKeyUpsert {
-	u.Set(apikey.FieldOpenaiResponsesStreamEventMode, v)
-	return u
-}
-
-// UpdateOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field to the value that was provided on create.
-func (u *APIKeyUpsert) UpdateOpenaiResponsesStreamEventMode() *APIKeyUpsert {
-	u.SetExcluded(apikey.FieldOpenaiResponsesStreamEventMode)
 	return u
 }
 
@@ -1259,20 +1217,6 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
-	})
-}
-
-// SetOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field.
-func (u *APIKeyUpsertOne) SetOpenaiResponsesStreamEventMode(v string) *APIKeyUpsertOne {
-	return u.Update(func(s *APIKeyUpsert) {
-		s.SetOpenaiResponsesStreamEventMode(v)
-	})
-}
-
-// UpdateOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field to the value that was provided on create.
-func (u *APIKeyUpsertOne) UpdateOpenaiResponsesStreamEventMode() *APIKeyUpsertOne {
-	return u.Update(func(s *APIKeyUpsert) {
-		s.UpdateOpenaiResponsesStreamEventMode()
 	})
 }
 
@@ -1911,20 +1855,6 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
-	})
-}
-
-// SetOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field.
-func (u *APIKeyUpsertBulk) SetOpenaiResponsesStreamEventMode(v string) *APIKeyUpsertBulk {
-	return u.Update(func(s *APIKeyUpsert) {
-		s.SetOpenaiResponsesStreamEventMode(v)
-	})
-}
-
-// UpdateOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field to the value that was provided on create.
-func (u *APIKeyUpsertBulk) UpdateOpenaiResponsesStreamEventMode() *APIKeyUpsertBulk {
-	return u.Update(func(s *APIKeyUpsert) {
-		s.UpdateOpenaiResponsesStreamEventMode()
 	})
 }
 

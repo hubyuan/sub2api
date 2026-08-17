@@ -221,15 +221,6 @@ func normalizeOpenAIWSTerminalEvent(eventType string) string {
 	}
 }
 
-func openAIWSTerminalEventSucceeded(eventType string) bool {
-	switch normalizeOpenAIWSTerminalEvent(eventType) {
-	case "response.completed", "response.done":
-		return true
-	default:
-		return false
-	}
-}
-
 func openAIWSPayloadTransientStatus(payload []byte) int {
 	if len(payload) == 0 {
 		return 0

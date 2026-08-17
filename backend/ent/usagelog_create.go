@@ -463,20 +463,6 @@ func (_c *UsageLogCreate) SetNillableFirstTokenMs(v *int) *UsageLogCreate {
 	return _c
 }
 
-// SetFirstSseEventMs sets the "first_sse_event_ms" field.
-func (_c *UsageLogCreate) SetFirstSseEventMs(v int) *UsageLogCreate {
-	_c.mutation.SetFirstSseEventMs(v)
-	return _c
-}
-
-// SetNillableFirstSseEventMs sets the "first_sse_event_ms" field if the given value is not nil.
-func (_c *UsageLogCreate) SetNillableFirstSseEventMs(v *int) *UsageLogCreate {
-	if v != nil {
-		_c.SetFirstSseEventMs(*v)
-	}
-	return _c
-}
-
 // SetUserAgent sets the "user_agent" field.
 func (_c *UsageLogCreate) SetUserAgent(v string) *UsageLogCreate {
 	_c.mutation.SetUserAgent(v)
@@ -1096,10 +1082,6 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FirstTokenMs(); ok {
 		_spec.SetField(usagelog.FieldFirstTokenMs, field.TypeInt, value)
 		_node.FirstTokenMs = &value
-	}
-	if value, ok := _c.mutation.FirstSseEventMs(); ok {
-		_spec.SetField(usagelog.FieldFirstSseEventMs, field.TypeInt, value)
-		_node.FirstSseEventMs = &value
 	}
 	if value, ok := _c.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -1881,30 +1863,6 @@ func (u *UsageLogUpsert) AddFirstTokenMs(v int) *UsageLogUpsert {
 // ClearFirstTokenMs clears the value of the "first_token_ms" field.
 func (u *UsageLogUpsert) ClearFirstTokenMs() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldFirstTokenMs)
-	return u
-}
-
-// SetFirstSseEventMs sets the "first_sse_event_ms" field.
-func (u *UsageLogUpsert) SetFirstSseEventMs(v int) *UsageLogUpsert {
-	u.Set(usagelog.FieldFirstSseEventMs, v)
-	return u
-}
-
-// UpdateFirstSseEventMs sets the "first_sse_event_ms" field to the value that was provided on create.
-func (u *UsageLogUpsert) UpdateFirstSseEventMs() *UsageLogUpsert {
-	u.SetExcluded(usagelog.FieldFirstSseEventMs)
-	return u
-}
-
-// AddFirstSseEventMs adds v to the "first_sse_event_ms" field.
-func (u *UsageLogUpsert) AddFirstSseEventMs(v int) *UsageLogUpsert {
-	u.Add(usagelog.FieldFirstSseEventMs, v)
-	return u
-}
-
-// ClearFirstSseEventMs clears the value of the "first_sse_event_ms" field.
-func (u *UsageLogUpsert) ClearFirstSseEventMs() *UsageLogUpsert {
-	u.SetNull(usagelog.FieldFirstSseEventMs)
 	return u
 }
 
@@ -2859,34 +2817,6 @@ func (u *UsageLogUpsertOne) UpdateFirstTokenMs() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearFirstTokenMs() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
-	})
-}
-
-// SetFirstSseEventMs sets the "first_sse_event_ms" field.
-func (u *UsageLogUpsertOne) SetFirstSseEventMs(v int) *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.SetFirstSseEventMs(v)
-	})
-}
-
-// AddFirstSseEventMs adds v to the "first_sse_event_ms" field.
-func (u *UsageLogUpsertOne) AddFirstSseEventMs(v int) *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.AddFirstSseEventMs(v)
-	})
-}
-
-// UpdateFirstSseEventMs sets the "first_sse_event_ms" field to the value that was provided on create.
-func (u *UsageLogUpsertOne) UpdateFirstSseEventMs() *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.UpdateFirstSseEventMs()
-	})
-}
-
-// ClearFirstSseEventMs clears the value of the "first_sse_event_ms" field.
-func (u *UsageLogUpsertOne) ClearFirstSseEventMs() *UsageLogUpsertOne {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.ClearFirstSseEventMs()
 	})
 }
 
@@ -4043,34 +3973,6 @@ func (u *UsageLogUpsertBulk) UpdateFirstTokenMs() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearFirstTokenMs() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
-	})
-}
-
-// SetFirstSseEventMs sets the "first_sse_event_ms" field.
-func (u *UsageLogUpsertBulk) SetFirstSseEventMs(v int) *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.SetFirstSseEventMs(v)
-	})
-}
-
-// AddFirstSseEventMs adds v to the "first_sse_event_ms" field.
-func (u *UsageLogUpsertBulk) AddFirstSseEventMs(v int) *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.AddFirstSseEventMs(v)
-	})
-}
-
-// UpdateFirstSseEventMs sets the "first_sse_event_ms" field to the value that was provided on create.
-func (u *UsageLogUpsertBulk) UpdateFirstSseEventMs() *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.UpdateFirstSseEventMs()
-	})
-}
-
-// ClearFirstSseEventMs clears the value of the "first_sse_event_ms" field.
-func (u *UsageLogUpsertBulk) ClearFirstSseEventMs() *UsageLogUpsertBulk {
-	return u.Update(func(s *UsageLogUpsert) {
-		s.ClearFirstSseEventMs()
 	})
 }
 

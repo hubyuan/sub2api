@@ -47,10 +47,6 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
-		field.String("openai_responses_stream_event_mode").
-			MaxLen(20).
-			Default("strict").
-			Comment("OpenAI Responses streaming event mode: strict or early_event"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
