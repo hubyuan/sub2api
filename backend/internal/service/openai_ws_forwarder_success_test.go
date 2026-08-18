@@ -553,6 +553,9 @@ func TestOpenAIGatewayService_Forward_WSv2_ResponseFailedIsNotSchedulingSuccess(
 	require.Equal(t, "response.failed", result.UpstreamTerminalEvent)
 	require.False(t, result.SucceededForScheduling())
 	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
+	boundAccountID, bindErr := svc.getOpenAIWSStateStore().GetResponseAccount(context.Background(), 0, "resp_failed_1")
+	require.NoError(t, bindErr)
+	require.Zero(t, boundAccountID, "failed turns must not create stale response-account sticky bindings")
 }
 
 func TestOpenAIWSPayloadString_OnlyAcceptsStringValues(t *testing.T) {

@@ -32,6 +32,7 @@ type httpUpstreamRecorder struct {
 	lastProxyURL string
 	requests     []*http.Request
 	bodies       [][]byte
+	accountIDs   []int64
 
 	resp      *http.Response
 	responses []*http.Response
@@ -66,6 +67,7 @@ func (r passthroughErrReadCloser) Close() error {
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	u.lastReq = req
 	u.lastProxyURL = proxyURL
+	u.accountIDs = append(u.accountIDs, accountID)
 	if req != nil && req.Body != nil {
 		b, _ := io.ReadAll(req.Body)
 		u.lastBody = b

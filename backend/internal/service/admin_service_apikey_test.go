@@ -443,6 +443,23 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NilCacheInvalidator(t *testing.T)
 	require.Equal(t, int64(7), *got.APIKey.GroupID)
 }
 
+func TestAdminService_AdminUpdateAPIKeyStreamEventMode(t *testing.T) {
+	existing := &APIKey{ID: 1, Key: "sk-test", OpenAIResponsesStreamEventMode: OpenAIResponsesStreamEventModeStrict}
+	repo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: repo, authCacheInvalidator: cache}
+
+	got, err := svc.AdminUpdateAPIKeyStreamEventMode(context.Background(), 1, OpenAIResponsesStreamEventModeEarlyEvent)
+	require.NoError(t, err)
+	require.Equal(t, OpenAIResponsesStreamEventModeEarlyEvent, got.OpenAIResponsesStreamEventMode)
+	require.Equal(t, OpenAIResponsesStreamEventModeEarlyEvent, repo.updated.OpenAIResponsesStreamEventMode)
+	require.Equal(t, []string{"sk-test"}, cache.keys)
+
+	got, err = svc.AdminUpdateAPIKeyStreamEventMode(context.Background(), 1, "unknown")
+	require.NoError(t, err)
+	require.Equal(t, OpenAIResponsesStreamEventModeStrict, got.OpenAIResponsesStreamEventMode)
+}
+
 // ---------------------------------------------------------------------------
 // Tests: AllowedGroup auto-sync
 // ---------------------------------------------------------------------------
