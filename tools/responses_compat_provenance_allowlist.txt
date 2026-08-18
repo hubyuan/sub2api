@@ -24,6 +24,7 @@ backend/internal/repository/api_key_repo.go
 backend/internal/repository/usage_log_repo_insert.go
 backend/internal/repository/usage_log_repo_query.go
 backend/internal/repository/usage_log_repo_request_type_test.go
+backend/internal/repository/usage_log_session_id_unit_test.go
 backend/internal/server/api_contract_test.go
 backend/internal/service/admin_group.go
 backend/internal/service/admin_service.go
