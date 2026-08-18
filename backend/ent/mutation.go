@@ -108,51 +108,52 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                                 Op
+	typ                                string
+	id                                 *int64
+	created_at                         *time.Time
+	updated_at                         *time.Time
+	deleted_at                         *time.Time
+	key                                *string
+	name                               *string
+	status                             *string
+	openai_responses_stream_event_mode *string
+	last_used_at                       *time.Time
+	ip_whitelist                       *[]string
+	appendip_whitelist                 []string
+	ip_blacklist                       *[]string
+	appendip_blacklist                 []string
+	quota                              *float64
+	addquota                           *float64
+	quota_used                         *float64
+	addquota_used                      *float64
+	expires_at                         *time.Time
+	rate_limit_5h                      *float64
+	addrate_limit_5h                   *float64
+	rate_limit_1d                      *float64
+	addrate_limit_1d                   *float64
+	rate_limit_7d                      *float64
+	addrate_limit_7d                   *float64
+	usage_5h                           *float64
+	addusage_5h                        *float64
+	usage_1d                           *float64
+	addusage_1d                        *float64
+	usage_7d                           *float64
+	addusage_7d                        *float64
+	window_5h_start                    *time.Time
+	window_1d_start                    *time.Time
+	window_7d_start                    *time.Time
+	clearedFields                      map[string]struct{}
+	user                               *int64
+	cleareduser                        bool
+	group                              *int64
+	clearedgroup                       bool
+	usage_logs                         map[int64]struct{}
+	removedusage_logs                  map[int64]struct{}
+	clearedusage_logs                  bool
+	done                               bool
+	oldValue                           func(context.Context) (*APIKey, error)
+	predicates                         []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -565,6 +566,42 @@ func (m *APIKeyMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *APIKeyMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetOpenaiResponsesStreamEventMode sets the "openai_responses_stream_event_mode" field.
+func (m *APIKeyMutation) SetOpenaiResponsesStreamEventMode(s string) {
+	m.openai_responses_stream_event_mode = &s
+}
+
+// OpenaiResponsesStreamEventMode returns the value of the "openai_responses_stream_event_mode" field in the mutation.
+func (m *APIKeyMutation) OpenaiResponsesStreamEventMode() (r string, exists bool) {
+	v := m.openai_responses_stream_event_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenaiResponsesStreamEventMode returns the old "openai_responses_stream_event_mode" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldOpenaiResponsesStreamEventMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenaiResponsesStreamEventMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenaiResponsesStreamEventMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenaiResponsesStreamEventMode: %w", err)
+	}
+	return oldValue.OpenaiResponsesStreamEventMode, nil
+}
+
+// ResetOpenaiResponsesStreamEventMode resets all changes to the "openai_responses_stream_event_mode" field.
+func (m *APIKeyMutation) ResetOpenaiResponsesStreamEventMode() {
+	m.openai_responses_stream_event_mode = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1532,7 +1569,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1556,6 +1593,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
+	}
+	if m.openai_responses_stream_event_mode != nil {
+		fields = append(fields, apikey.FieldOpenaiResponsesStreamEventMode)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1626,6 +1666,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case apikey.FieldStatus:
 		return m.Status()
+	case apikey.FieldOpenaiResponsesStreamEventMode:
+		return m.OpenaiResponsesStreamEventMode()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1681,6 +1723,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldGroupID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
+	case apikey.FieldOpenaiResponsesStreamEventMode:
+		return m.OldOpenaiResponsesStreamEventMode(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1775,6 +1819,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case apikey.FieldOpenaiResponsesStreamEventMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenaiResponsesStreamEventMode(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2109,6 +2160,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case apikey.FieldOpenaiResponsesStreamEventMode:
+		m.ResetOpenaiResponsesStreamEventMode()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
@@ -44044,6 +44098,8 @@ type UsageLogMutation struct {
 	addduration_ms               *int
 	first_token_ms               *int
 	addfirst_token_ms            *int
+	first_sse_event_ms           *int
+	addfirst_sse_event_ms        *int
 	user_agent                   *string
 	ip_address                   *string
 	image_count                  *int
@@ -45931,6 +45987,76 @@ func (m *UsageLogMutation) ResetFirstTokenMs() {
 	delete(m.clearedFields, usagelog.FieldFirstTokenMs)
 }
 
+// SetFirstSseEventMs sets the "first_sse_event_ms" field.
+func (m *UsageLogMutation) SetFirstSseEventMs(i int) {
+	m.first_sse_event_ms = &i
+	m.addfirst_sse_event_ms = nil
+}
+
+// FirstSseEventMs returns the value of the "first_sse_event_ms" field in the mutation.
+func (m *UsageLogMutation) FirstSseEventMs() (r int, exists bool) {
+	v := m.first_sse_event_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstSseEventMs returns the old "first_sse_event_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldFirstSseEventMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstSseEventMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstSseEventMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstSseEventMs: %w", err)
+	}
+	return oldValue.FirstSseEventMs, nil
+}
+
+// AddFirstSseEventMs adds i to the "first_sse_event_ms" field.
+func (m *UsageLogMutation) AddFirstSseEventMs(i int) {
+	if m.addfirst_sse_event_ms != nil {
+		*m.addfirst_sse_event_ms += i
+	} else {
+		m.addfirst_sse_event_ms = &i
+	}
+}
+
+// AddedFirstSseEventMs returns the value that was added to the "first_sse_event_ms" field in this mutation.
+func (m *UsageLogMutation) AddedFirstSseEventMs() (r int, exists bool) {
+	v := m.addfirst_sse_event_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFirstSseEventMs clears the value of the "first_sse_event_ms" field.
+func (m *UsageLogMutation) ClearFirstSseEventMs() {
+	m.first_sse_event_ms = nil
+	m.addfirst_sse_event_ms = nil
+	m.clearedFields[usagelog.FieldFirstSseEventMs] = struct{}{}
+}
+
+// FirstSseEventMsCleared returns if the "first_sse_event_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) FirstSseEventMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldFirstSseEventMs]
+	return ok
+}
+
+// ResetFirstSseEventMs resets all changes to the "first_sse_event_ms" field.
+func (m *UsageLogMutation) ResetFirstSseEventMs() {
+	m.first_sse_event_ms = nil
+	m.addfirst_sse_event_ms = nil
+	delete(m.clearedFields, usagelog.FieldFirstSseEventMs)
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (m *UsageLogMutation) SetUserAgent(s string) {
 	m.user_agent = &s
@@ -46746,7 +46872,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -46848,6 +46974,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.first_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.first_sse_event_ms != nil {
+		fields = append(fields, usagelog.FieldFirstSseEventMs)
 	}
 	if m.user_agent != nil {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -46964,6 +47093,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.DurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.FirstTokenMs()
+	case usagelog.FieldFirstSseEventMs:
+		return m.FirstSseEventMs()
 	case usagelog.FieldUserAgent:
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
@@ -47067,6 +47198,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldDurationMs(ctx)
 	case usagelog.FieldFirstTokenMs:
 		return m.OldFirstTokenMs(ctx)
+	case usagelog.FieldFirstSseEventMs:
+		return m.OldFirstSseEventMs(ctx)
 	case usagelog.FieldUserAgent:
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
@@ -47340,6 +47473,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFirstTokenMs(v)
 		return nil
+	case usagelog.FieldFirstSseEventMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstSseEventMs(v)
+		return nil
 	case usagelog.FieldUserAgent:
 		v, ok := value.(string)
 		if !ok {
@@ -47493,6 +47633,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addfirst_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
 	}
+	if m.addfirst_sse_event_ms != nil {
+		fields = append(fields, usagelog.FieldFirstSseEventMs)
+	}
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -47546,6 +47689,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.AddedFirstTokenMs()
+	case usagelog.FieldFirstSseEventMs:
+		return m.AddedFirstSseEventMs()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
 	case usagelog.FieldVideoCount:
@@ -47687,6 +47832,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFirstTokenMs(v)
 		return nil
+	case usagelog.FieldFirstSseEventMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFirstSseEventMs(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -47754,6 +47906,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldFirstTokenMs) {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.FieldCleared(usagelog.FieldFirstSseEventMs) {
+		fields = append(fields, usagelog.FieldFirstSseEventMs)
 	}
 	if m.FieldCleared(usagelog.FieldUserAgent) {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -47834,6 +47989,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ClearFirstTokenMs()
+		return nil
+	case usagelog.FieldFirstSseEventMs:
+		m.ClearFirstSseEventMs()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ClearUserAgent()
@@ -47971,6 +48129,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ResetFirstTokenMs()
+		return nil
+	case usagelog.FieldFirstSseEventMs:
+		m.ResetFirstSseEventMs()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ResetUserAgent()

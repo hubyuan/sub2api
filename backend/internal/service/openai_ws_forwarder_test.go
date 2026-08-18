@@ -134,6 +134,58 @@ func TestOpenAIForwardResultSucceededForScheduling_TerminalEvents(t *testing.T) 
 	}
 }
 
+func TestOpenAIWSTerminalEventSucceeded(t *testing.T) {
+	require.True(t, openAIWSTerminalEventSucceeded("response.completed"))
+	require.True(t, openAIWSTerminalEventSucceeded("response.done"))
+	require.False(t, openAIWSTerminalEventSucceeded("response.failed"))
+	require.False(t, openAIWSTerminalEventSucceeded("response.incomplete"))
+}
+
+func TestOpenAIForwardResultShouldReportSchedulingResult(t *testing.T) {
+	require.True(t, (*OpenAIForwardResult)(nil).ShouldReportSchedulingResult())
+	require.True(t, (&OpenAIForwardResult{}).ShouldReportSchedulingResult())
+	require.False(t, (&OpenAIForwardResult{suppressScheduleResult: true}).ShouldReportSchedulingResult())
+}
+
+func TestOpenAIWSResponseFailedSchedulingClassification(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  string
+		suppress bool
+	}{
+		{
+			name:     "transient server error is reported",
+			payload:  `{"type":"response.failed","response":{"error":{"code":"server_error","type":"server_error","message":"Internal error"}}}`,
+			suppress: false,
+		},
+		{
+			name:     "invalid request is not reported",
+			payload:  `{"type":"response.failed","response":{"error":{"code":"context_length_exceeded","type":"invalid_request_error","message":"input exceeds the context window"}}}`,
+			suppress: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := []byte(tt.payload)
+			message := extractOpenAISSEErrorMessage(payload)
+			require.Equal(t, tt.suppress, !openAIStreamFailedEventShouldFailover(payload, message))
+		})
+	}
+}
+
+func TestOpenAIWSShouldBufferStreamEvent(t *testing.T) {
+	if !openAIWSShouldBufferStreamEvent(false, false, false, false) {
+		t.Fatal("strict mode must buffer preamble before semantic output")
+	}
+	if openAIWSShouldBufferStreamEvent(true, false, false, false) {
+		t.Fatal("early event mode must not buffer a complete preamble")
+	}
+	if openAIWSShouldBufferStreamEvent(false, false, true, false) {
+		t.Fatal("token event must be emitted")
+	}
+}
+
 func TestOpenAIWSTerminalEvent_ResponseFailedRecordsModelTransient(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)

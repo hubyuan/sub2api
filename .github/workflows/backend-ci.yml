@@ -146,7 +146,7 @@ jobs:
           test "$actual_185_checksum" = f27a4a07e9692c9c0659797e0fb9b7e0c221959284bd27fd097b6c6b5f05bc0f
           test "$actual_220_checksum" = 4595baeb0dab0fd05be15da4e8f0dcf9f8e7d0ca36d60d00d223fca9bef03625
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM schema_migrations WHERE filename IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql')" | tr -d '\r')" = 0
+            "SELECT COUNT(*) FROM schema_migrations WHERE filename IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql', '224_add_openai_responses_compatibility.sql')" | tr -d '\r')" = 0
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -At \
             -c "SELECT filename || E'\\t' || checksum FROM schema_migrations ORDER BY filename" \
             >"$RUNNER_TEMP/sub2api-upgrade-prior-migrations.tsv"
@@ -157,13 +157,17 @@ jobs:
           wait_for_upgrade_health
           docker stop --time 10 "$container" >/dev/null
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM schema_migrations WHERE filename IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql')" | tr -d '\r')" = 3
+            "SELECT COUNT(*) FROM schema_migrations WHERE filename IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql', '224_add_openai_responses_compatibility.sql')" | tr -d '\r')" = 4
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT checksum FROM schema_migrations WHERE filename = '224_add_openai_responses_compatibility.sql'" | tr -d '\r')" = f27a4a07e9692c9c0659797e0fb9b7e0c221959284bd27fd097b6c6b5f05bc0f
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'groups' AND column_name IN ('long_context_pricing_enabled', 'model_pricing')" | tr -d '\r')" = 2
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('usage_group_daily_rollups', 'usage_group_rollup_state')" | tr -d '\r')" = 2
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('api_keys', 'openai_responses_stream_event_mode'), ('usage_logs', 'first_sse_event_ms'))" | tr -d '\r')" = 2
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -At \
-            -c "SELECT filename || E'\\t' || checksum FROM schema_migrations WHERE filename NOT IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql') ORDER BY filename" \
+            -c "SELECT filename || E'\\t' || checksum FROM schema_migrations WHERE filename NOT IN ('221_group_model_pricing.sql', '222_group_usage_daily_rollups.sql', '223_group_usage_rollup_timezone.sql', '224_add_openai_responses_compatibility.sql') ORDER BY filename" \
             >"$RUNNER_TEMP/sub2api-upgrade-after-migrations.tsv"
           cmp "$RUNNER_TEMP/sub2api-upgrade-prior-migrations.tsv" "$RUNNER_TEMP/sub2api-upgrade-after-migrations.tsv"
 
@@ -172,7 +176,7 @@ jobs:
           wait_for_upgrade_health
           docker stop --time 10 "$container" >/dev/null
           test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d sub2api_upgrade -tAc \
-            "SELECT COUNT(*) FROM schema_migrations" | tr -d '\r')" = "$((prior_migration_count + 3))"
+            "SELECT COUNT(*) FROM schema_migrations" | tr -d '\r')" = "$((prior_migration_count + 4))"
 
           docker start "$container" >/dev/null
           wait_for_upgrade_health

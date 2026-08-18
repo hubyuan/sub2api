@@ -264,6 +264,7 @@ type OpenAIForwardResult struct {
 	ResponseHeaders       http.Header
 	Duration              time.Duration
 	FirstTokenMs          *int
+	FirstSSEEventMs       *int
 	ClientDisconnect      bool
 	ImageCount            int
 	ImageSize             string
@@ -286,6 +287,29 @@ type OpenAIForwardResult struct {
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
+	// suppressScheduleResult is set for deterministic upstream terminal errors
+	// (for example context or policy rejection) that must not affect account health.
+	suppressScheduleResult bool
+}
+
+type openAIResponseFailedError struct {
+	message                      string
+	reportAccountScheduleFailure bool
+}
+
+func (e *openAIResponseFailedError) Error() string {
+	return e.message
+}
+
+func (e *openAIResponseFailedError) ShouldReportAccountScheduleFailure() bool {
+	return e != nil && e.reportAccountScheduleFailure
+}
+
+func newOpenAIResponseFailedError(message string, reportAccountScheduleFailure bool) error {
+	return &openAIResponseFailedError{
+		message:                      message,
+		reportAccountScheduleFailure: reportAccountScheduleFailure,
+	}
 }
 
 // SucceededForScheduling reports whether this result is an upstream success
@@ -295,12 +319,13 @@ func (r *OpenAIForwardResult) SucceededForScheduling() bool {
 	if r == nil || !r.OpenAIWSMode || r.UpstreamTerminalEvent == "" {
 		return true
 	}
-	switch r.UpstreamTerminalEvent {
-	case "response.completed", "response.done":
-		return true
-	default:
-		return false
-	}
+	return openAIWSTerminalEventSucceeded(r.UpstreamTerminalEvent)
+}
+
+// ShouldReportSchedulingResult excludes deterministic request-level terminal
+// failures from scheduler health feedback.
+func (r *OpenAIForwardResult) ShouldReportSchedulingResult() bool {
+	return r == nil || !r.suppressScheduleResult
 }
 
 // SetActualOpenAIUpstreamEndpoint records the endpoint selected by the current

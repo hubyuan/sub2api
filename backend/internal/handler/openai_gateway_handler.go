@@ -684,7 +684,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					reqLog.Warn("openai.upstream_failover_switching", failoverSwitchFields...)
 					continue
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+				if shouldReportOpenAIForwardScheduleFailure(err) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+				}
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -760,6 +762,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		)
 		return
 	}
+}
+
+func shouldReportOpenAIForwardScheduleFailure(err error) bool {
+	var clientValidationErr *service.OpenAIReasoningContentArrayClientError
+	if err == nil || errors.As(err, &clientValidationErr) {
+		return false
+	}
+	var classified interface {
+		ShouldReportAccountScheduleFailure() bool
+	}
+	if errors.As(err, &classified) {
+		return classified.ShouldReportAccountScheduleFailure()
+	}
+	return true
 }
 
 func isOpenAILegacyCompactPath(c *gin.Context) bool {
