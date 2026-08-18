@@ -14,6 +14,7 @@ backend/ent/usagelog/where.go
 backend/ent/usagelog_create.go
 backend/ent/usagelog_update.go
 backend/internal/handler/admin/apikey_handler.go
+backend/internal/handler/admin/admin_service_stub_test.go
 backend/internal/handler/api_key_handler.go
 backend/internal/handler/dto/mappers.go
 backend/internal/handler/dto/types.go
