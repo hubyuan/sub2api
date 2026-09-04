@@ -1,0 +1,14 @@
+# path	class	reason
+.github/workflows/release.yml	ci-guard	Prevent fork tag and dispatch events from running upstream publishing, release, notification, or default-branch write jobs.
+.gitignore	release-safety	Track the exact minimal-release audit document while leaving unrelated local docs ignored.
+backend/migrations/220_clear_non_grok_video_generation_config.sql	runtime-compat	Exact production-compatible bytes from fork commit 115317ef1f29465515b0725df69a94bd4890ec60; executable SQL is upstream-equivalent.
+backend/migrations/migration_220_contract_test.go	test	Pin raw and migration-runner checksums and executable-SQL equivalence.
+docs/HUMANWILL_MINIMAL_RELEASE.md	documentation	Document the exact upstream source, allowed difference boundary, and local release gates.
+tools/check_release_contract.py	release-safety	Validate the immutable amd64-only local release command without publishing.
+tools/check_upstream_provenance.py	provenance	Fail closed on any unreviewed difference from exact upstream v0.1.185.
+tools/check_workflow_triggers.py	ci-guard	Audit every workflow trigger and all publishing-capable job guards.
+tools/container_resource_sampler.py	test	Capture isolated candidate resource evidence without application changes.
+tools/minimal_release_provenance_allowlist.tsv	provenance	Machine-readable exhaustive list of every reviewed difference from exact upstream v0.1.185.
+tools/mock_openai_upstream.py	test	Loopback-only deterministic Responses fixture for isolated runtime tests.
+tools/release_humanwill_image.sh	release-safety	Fail-closed version absence check followed by the sole immutable linux/amd64 Registry build.
+tools/run_isolated_release_audit.sh	test	Exercise migration, rollback, resource, authentication, streaming, and usage compatibility on isolated data.
